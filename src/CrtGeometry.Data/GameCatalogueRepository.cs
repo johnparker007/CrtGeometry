@@ -62,13 +62,23 @@ public sealed class GameCatalogueRepository(string connectionString)
     }
 
     public void SetIncludeOnNano(string romName, bool included)
+        => SetIncludeOnNano([romName], included);
+
+    public void SetIncludeOnNano(IEnumerable<string> romNames, bool included)
     {
+        ArgumentNullException.ThrowIfNull(romNames);
+        var names = romNames.Where(name => !string.IsNullOrWhiteSpace(name))
+            .Distinct(StringComparer.Ordinal).OrderBy(name => name, StringComparer.Ordinal).ToArray();
+        if (names.Length == 0) return;
         using var connection = SqliteConnectionFactory.Open(connectionString);
+        using var transaction = connection.BeginTransaction();
         using var command = connection.CreateCommand();
-        command.CommandText = "UPDATE MameMachines SET IncludeOnNano=$included WHERE RomName=$rom;";
+        command.Transaction = transaction;
+        command.CommandText = "UPDATE MameMachines SET IncludeOnNano=$included WHERE RomName=$rom AND IncludeOnNano<>$included;";
         command.Parameters.AddWithValue("$included", included);
-        command.Parameters.AddWithValue("$rom", romName);
-        if (command.ExecuteNonQuery() != 1) throw new InvalidOperationException($"MAME game '{romName}' no longer exists.");
+        var rom = command.Parameters.Add("$rom", SqliteType.Text);
+        foreach (var name in names) { rom.Value = name; command.ExecuteNonQuery(); }
+        transaction.Commit();
     }
 
     private static string? Text(SqliteDataReader r,int i)=>r.IsDBNull(i)?null:r.GetString(i);

@@ -54,10 +54,12 @@ public sealed class GamesViewModel : INotifyPropertyChanged
         if (SelectedGame is not null) SelectedGame = results.FirstOrDefault(x => x.RomName == SelectedGame.RomName);
     }
 
-    public void SetIncludeOnNano(GameCatalogueEntry game, bool included)
+    public void SetIncludeOnNano(IEnumerable<GameCatalogueEntry> games, bool included)
     {
-        _repository.SetIncludeOnNano(game.RomName, included);
-        game.IncludeOnNano = included;
+        ArgumentNullException.ThrowIfNull(games);
+        var selected = games.DistinctBy(game => game.RomName).OrderBy(game => game.RomName, StringComparer.Ordinal).ToArray();
+        _repository.SetIncludeOnNano(selected.Select(game => game.RomName), included);
+        foreach (var game in selected) game.IncludeOnNano = included;
     }
 
     private void Schedule() { _searchDelay.Stop(); _searchDelay.Start(); }

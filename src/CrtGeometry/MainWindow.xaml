@@ -17,12 +17,17 @@
           <TextBlock Margin="0,4,0,0" Text="{Binding ResultSummary, Mode=OneWay}"/>
          </WrapPanel>
         </StackPanel>
-        <DataGrid Grid.Row="1" ItemsSource="{Binding Games, Mode=OneWay}" SelectedItem="{Binding SelectedGame, Mode=TwoWay}" AutoGenerateColumns="False" IsReadOnly="True" CellEditEnding="GamesGrid_CellEditEnding"
+        <DataGrid x:Name="GamesGrid" Grid.Row="1" ItemsSource="{Binding Games, Mode=OneWay}" SelectedItem="{Binding SelectedGame, Mode=TwoWay}" AutoGenerateColumns="False" IsReadOnly="True"
+                  SelectionMode="Extended" SelectionUnit="FullRow" PreviewMouseRightButtonDown="GamesGrid_PreviewMouseRightButtonDown"
                   CanUserAddRows="False" EnableRowVirtualization="True" EnableColumnVirtualization="True" VirtualizingPanel.IsVirtualizing="True" VirtualizingPanel.VirtualizationMode="Recycling">
+         <DataGrid.ContextMenu><ContextMenu>
+          <MenuItem Header="Include selected on Nano" Click="IncludeSelectedOnNano_Click"/>
+          <MenuItem Header="Exclude selected from Nano" Click="ExcludeSelectedFromNano_Click"/>
+         </ContextMenu></DataGrid.ContextMenu>
          <DataGrid.Columns>
           <DataGridTextColumn Header="Description" Binding="{Binding DisplayName, Mode=OneWay}" Width="2*" SortMemberPath="Description"/>
           <DataGridTextColumn Header="ROM" Binding="{Binding RomName, Mode=OneWay}" Width="110"/>
-          <DataGridCheckBoxColumn Header="Include on Nano" Binding="{Binding IncludeOnNano, Mode=OneWay}" Width="105" IsReadOnly="False"/>
+          <DataGridCheckBoxColumn Header="Include on Nano" Binding="{Binding IncludeOnNano, Mode=OneWay}" Width="105" IsReadOnly="True"/>
           <DataGridTextColumn Header="Year" Binding="{Binding Year, Mode=OneWay}" Width="70"/>
           <DataGridTextColumn Header="Manufacturer" Binding="{Binding Manufacturer, Mode=OneWay}" Width="*"/>
           <DataGridTextColumn Header="Resolution" Binding="{Binding ResolutionSummary, Mode=OneWay}" Width="145" CanUserSort="False"/>

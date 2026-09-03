@@ -54,13 +54,30 @@ public partial class MainWindow : Window
         if (dialog.ShowDialog(this) == true) SetFirmwareDirectory(dialog.FolderName);
     }
 
-    private void GamesGrid_CellEditEnding(object sender, DataGridCellEditEndingEventArgs e)
+    private void GamesGrid_PreviewMouseRightButtonDown(object sender, MouseButtonEventArgs e)
     {
-        if (e.Row.Item is not GameCatalogueEntry game || e.EditingElement is not CheckBox checkBox) return;
-        try { _gamesViewModel.SetIncludeOnNano(game, checkBox.IsChecked == true); }
+        var row = ItemsControl.ContainerFromElement(GamesGrid, e.OriginalSource as DependencyObject) as DataGridRow;
+        if (row is null || row.IsSelected) return;
+        GamesGrid.UnselectAll();
+        row.IsSelected = true;
+        row.Focus();
+    }
+
+    private void IncludeSelectedOnNano_Click(object sender, RoutedEventArgs e) => SetSelectedGamesIncludeOnNano(true);
+    private void ExcludeSelectedFromNano_Click(object sender, RoutedEventArgs e) => SetSelectedGamesIncludeOnNano(false);
+
+    private void SetSelectedGamesIncludeOnNano(bool included)
+    {
+        var games = GamesGrid.SelectedItems.Cast<GameCatalogueEntry>().ToArray();
+        if (games.Length == 0) return;
+        try
+        {
+            _gamesViewModel.SetIncludeOnNano(games, included);
+            GamesGrid.Items.Refresh();
+            RefreshFirmwareStatistics();
+        }
         catch (Exception exception)
         {
-            e.Cancel = true;
             MessageBox.Show(this, exception.Message, "Nano inclusion update failed", MessageBoxButton.OK, MessageBoxImage.Error);
         }
     }

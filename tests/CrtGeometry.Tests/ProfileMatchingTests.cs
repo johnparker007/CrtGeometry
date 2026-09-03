@@ -86,7 +86,7 @@ public sealed class ProfileMatchingTests : IDisposable
         var applied = repository.PreviewAndApply("source", new(1,2,3,4,5));
 
         Assert.Equal(7, applied.ProfileId);
-        var match = new GameCatalogueRepository(_cs).Search(new() { SearchText="match" }).Single();
+        var match = FindGame(new GameCatalogueRepository(_cs), "match");
         Assert.Equal(20, match.ProfileId);
         Assert.Equal(ProfileAssignmentType.Manual, match.AssignmentType);
     }
@@ -113,11 +113,11 @@ public sealed class ProfileMatchingTests : IDisposable
         repository.AssignManual("match",20);
         var second=repository.Preview("source",new(6,7,8,9,10)); var newId=repository.Apply(second,new(6,7,8,9,10));
         var catalogue=new GameCatalogueRepository(_cs);
-        Assert.Equal(20,catalogue.Search(new(){SearchText="match"}).Single().ProfileId);
-        Assert.Equal(ProfileAssignmentType.Manual,catalogue.Search(new(){SearchText="match"}).Single().AssignmentType);
-        Assert.Equal(newId,catalogue.Search(new(){SearchText="source"}).Single().ProfileId);
+        Assert.Equal(20,FindGame(catalogue,"match").ProfileId);
+        Assert.Equal(ProfileAssignmentType.Manual,FindGame(catalogue,"match").AssignmentType);
+        Assert.Equal(newId,FindGame(catalogue,"source").ProfileId);
         repository.RemoveManualOverride("match");
-        var reset=catalogue.Search(new(){SearchText="match"}).Single(); Assert.Equal(newId,reset.ProfileId); Assert.Equal(ProfileAssignmentType.Automatic,reset.AssignmentType);
+        var reset=FindGame(catalogue,"match"); Assert.Equal(newId,reset.ProfileId); Assert.Equal(ProfileAssignmentType.Automatic,reset.AssignmentType);
     }
 
     [Fact]
@@ -169,6 +169,9 @@ public sealed class ProfileMatchingTests : IDisposable
     }
 
     private VideoSignature Signature(int w,int h,int r,double refresh)=>new VideoSignatureService().SelectPrimary([Display(w,h,r,refresh)]).Signature!.Value;
+    private static GameCatalogueEntry FindGame(GameCatalogueRepository catalogue, string romName) =>
+        catalogue.Search(new() { SearchText=romName, Inclusion=InclusionFilter.All, Presence=PresenceFilter.All })
+            .Single(game => game.RomName == romName);
     private static MameDisplay Display(int? w,int? h,int? r,double? f,string? type="raster")=>new(){Type=type,Width=w,Height=h,Rotate=r,Refresh=f,RawAttributesJson="{}"};
     private const string Catalogue="""
       <game name='source'><description>Source Game</description><display type='raster' width='320' height='240' rotate='0' refresh='60.606061'/><input coins='1'/></game>

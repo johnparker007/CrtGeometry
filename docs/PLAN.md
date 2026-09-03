@@ -251,7 +251,7 @@ The existing hardware prototype uses:
 
 - Arduino Nano / ATmega328P
 - 20x4 HD44780-compatible LCD in 4-bit parallel mode
-- 3 clickable rotary encoders
+- 2 clickable rotary encoders
 - M24C16W TV NVRAM through a manual DPDT switch that transfers SDA/SCL between TV and Nano
 - common logic ground between TV and Nano
 
@@ -307,13 +307,13 @@ D8 = CLK
 D7 = DT
 D6 = SW
 
-Encoder 3
-A0 = CLK
-A1 = DT
-A2 = SW
+Currently free (not assigned to future features)
+A0, A1, A2, D13
 ```
 
 D13 was deliberately avoided for rotary CLK because the onboard LED circuitry caused poor behavior.
+Encoder 3 has been removed; A0/A1/A2 remain unassigned pending finalized electronic
+bus-switch, IR, and transistor/MOSFET backlight circuits.
 
 The encoders require proper quadrature decoding rather than simple CLK-edge sampling. The working implementation uses a state transition table and accumulation to one movement per detent.
 

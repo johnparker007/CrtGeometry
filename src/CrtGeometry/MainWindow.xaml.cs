@@ -2,6 +2,7 @@ using System.IO;
 using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Input;
+using CrtGeometry.Core;
 using CrtGeometry.Data;
 using Microsoft.Data.Sqlite;
 using Microsoft.Win32;
@@ -53,6 +54,34 @@ public partial class MainWindow : Window
         if (dialog.ShowDialog(this) == true) SetFirmwareDirectory(dialog.FolderName);
     }
 
+    private void GamesGrid_PreviewMouseRightButtonDown(object sender, MouseButtonEventArgs e)
+    {
+        var row = ItemsControl.ContainerFromElement(GamesGrid, e.OriginalSource as DependencyObject) as DataGridRow;
+        if (row is null || row.IsSelected) return;
+        GamesGrid.UnselectAll();
+        row.IsSelected = true;
+        row.Focus();
+    }
+
+    private void IncludeSelectedOnNano_Click(object sender, RoutedEventArgs e) => SetSelectedGamesIncludeOnNano(true);
+    private void ExcludeSelectedFromNano_Click(object sender, RoutedEventArgs e) => SetSelectedGamesIncludeOnNano(false);
+
+    private void SetSelectedGamesIncludeOnNano(bool included)
+    {
+        var games = GamesGrid.SelectedItems.Cast<GameCatalogueEntry>().ToArray();
+        if (games.Length == 0) return;
+        try
+        {
+            _gamesViewModel.SetIncludeOnNano(games, included);
+            GamesGrid.Items.Refresh();
+            RefreshFirmwareStatistics();
+        }
+        catch (Exception exception)
+        {
+            MessageBox.Show(this, exception.Message, "Nano inclusion update failed", MessageBoxButton.OK, MessageBoxImage.Error);
+        }
+    }
+
     private void RefreshFirmware_Click(object sender, RoutedEventArgs e) => RefreshFirmwareStatistics();
 
     private void GenerateFirmware_Click(object sender, RoutedEventArgs e)
@@ -87,6 +116,9 @@ public partial class MainWindow : Window
         FirmwareTableBytes.Text = $"{statistics.ProfileTableBytes} bytes";
         FirmwareValidityBytes.Text = $"{statistics.ValidityBytes} bytes";
         FirmwareGameCount.Text = statistics.GameCount.ToString();
+        FirmwareAssignedGameCount.Text = statistics.EffectiveAssignmentCount.ToString();
+        FirmwareNanoSelectedCount.Text = statistics.NanoSelectedCount.ToString();
+        FirmwareMahjongExcludedCount.Text = statistics.ExcludedMahjongCount.ToString();
         FirmwareNameBytes.Text = $"{statistics.PackedNameBytes} bytes";
         FirmwareOffsetBytes.Text = $"{statistics.OffsetBytes} bytes";
         FirmwareMappingBytes.Text = $"{statistics.MappingBytes} bytes";

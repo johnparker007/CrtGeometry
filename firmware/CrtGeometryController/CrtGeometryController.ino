@@ -312,7 +312,7 @@ uint8_t generatedGameProfileId(uint16_t index)
 uint32_t generatedGameNameBitOffset(uint16_t index)
 {
     if (index >= GENERATED_GAME_COUNT) return GENERATED_TOTAL_NAME_BITS;
-    return pgm_read_dword(&GENERATED_GAME_NAME_BIT_OFFSETS[index]);
+    return (uint32_t)pgm_read_word(&GENERATED_GAME_NAME_SYMBOL_OFFSETS[index]) * 6;
 }
 
 uint16_t generatedGameNameLength(uint16_t index)

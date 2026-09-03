@@ -194,14 +194,14 @@ public sealed class FirmwareDatabaseGeneratorTests : IDisposable
     [Theory]
     [InlineData(700)]
     [InlineData(1500)]
-    public void SyntheticDatabasesUseChecked32BitContinuousOffsets(int count)
+    public void SyntheticDatabasesUseChecked16BitSymbolOffsets(int count)
     {
         var games = Enumerable.Range(0, count).Select(i => new FirmwareGame($"rom{i:D4}", $"Game {i:D4} Long Name", 255));
         var result = FirmwareDatabaseGenerator.Generate([Profile(255, 1, 2, 3, 4, 5)], games);
         Assert.Equal(count, result.Statistics.GameCount);
-        Assert.Equal(count * 4, result.Statistics.OffsetBytes);
+        Assert.Equal(count * 2, result.Statistics.OffsetBytes);
         Assert.Equal(result.Statistics.TotalNameBits, result.Games.Sum(g => g.DisplayName.Length) * 6);
-        Assert.True(result.Games[^1].NameBitOffset > ushort.MaxValue || count == 700);
+        Assert.True(result.Games[^1].NameSymbolOffset > 0);
     }
 
     [Fact]
@@ -209,6 +209,8 @@ public sealed class FirmwareDatabaseGeneratorTests : IDisposable
     {
         Assert.Throws<InvalidDataException>(() => FirmwareDatabaseGenerator.Generate([Profile(1, 1, 1, 1, 1, 1)], [new("bad", "Bad", 2)]));
         Assert.Throws<InvalidDataException>(() => FirmwareDatabaseGenerator.ValidateTotalNameBits((long)uint.MaxValue + 1));
+        FirmwareDatabaseGenerator.ValidateTotalNameSymbols(ushort.MaxValue);
+        Assert.Throws<InvalidDataException>(() => FirmwareDatabaseGenerator.ValidateTotalNameSymbols((long)ushort.MaxValue + 1));
     }
 
     [Fact]
@@ -221,12 +223,12 @@ public sealed class FirmwareDatabaseGeneratorTests : IDisposable
             command.CommandText = """
                 INSERT INTO MameImports(Id,ImportedAtUtc,DurationMilliseconds,TotalMachines,IncludedMachines,MachinesWithDisplays)
                 VALUES(1,'x',0,5,3,0);
-                INSERT INTO MameMachines(RomName,Description,Runnable,IsBios,IsDevice,IsMechanical,ExclusionReasons,IsIncluded,LastImportId,IsPresent) VALUES
-                  ('good','Good Game',1,0,0,0,0,1,1,1),
-                  ('goodclone','Good Game Clone',1,0,0,0,0,1,1,1),
-                  ('unassigned','No Assignment',1,0,0,0,0,1,1,1),
-                  ('absent','Absent Game',1,0,0,0,0,1,1,0),
-                  ('excluded','Excluded Game',1,0,0,0,8,0,1,1);
+                INSERT INTO MameMachines(RomName,Description,Runnable,IsBios,IsDevice,IsMechanical,ExclusionReasons,IsIncluded,LastImportId,IsPresent,IncludeOnNano) VALUES
+                  ('good','Good Game',1,0,0,0,0,1,1,1,1),
+                  ('goodclone','Good Game Clone',1,0,0,0,0,1,1,1,1),
+                  ('unassigned','No Assignment',1,0,0,0,0,1,1,1,1),
+                  ('absent','Absent Game',1,0,0,0,0,1,1,0,1),
+                  ('excluded','Excluded Game',1,0,0,0,8,0,1,1,1);
                 INSERT INTO GameProfileAssignments(RomName,ProfileId,AssignmentType,UpdatedAtUtc) VALUES
                   ('good',1,2,'x'),('goodclone',1,2,'x'),('absent',1,2,'x'),('excluded',1,2,'x');
                 UPDATE MameMachines SET CloneOf='good' WHERE RomName='goodclone';
@@ -238,6 +240,66 @@ public sealed class FirmwareDatabaseGeneratorTests : IDisposable
         Assert.Equal("good", result.Games[0].RomName);
         Assert.Equal(1, result.Games[0].ProfileId);
         Assert.DoesNotContain(result.Games, game => game.RomName == "goodclone");
+        Assert.Equal(5, result.Statistics.NanoSelectedCount);
+        Assert.Equal(1, result.Statistics.GameCount);
+    }
+
+    [Fact]
+    public void NanoNamesStripQualifiersAndResolveNewCollisions()
+    {
+        Assert.Equal("DoDonPachi", FirmwareDatabaseGenerator.StripParenthesizedQualifiers("DoDonPachi (International, Master Ver. 97/02/05)"));
+        Assert.Equal("Game", FirmwareDatabaseGenerator.StripParenthesizedQualifiers("Game (World) (Rev A)"));
+        Assert.Equal("Plain Game", FirmwareDatabaseGenerator.StripParenthesizedQualifiers("Plain Game"));
+        var result = FirmwareDatabaseGenerator.Generate([Profile(1, 1, 1, 1, 1, 1)],
+            [new("world", "Same Game (World)", 1), new("japan", "Same Game (Japan)", 1)]);
+        Assert.Equal(2, result.Games.Select(x => x.DisplayName).Distinct().Count());
+        Assert.All(result.Games, x => Assert.True(x.DisplayName.Length <= 40));
+        Assert.All(result.Games, x => Assert.Contains("[", x.DisplayName));
+    }
+
+    [Fact]
+    public void PreviewRequiresNanoFlagAndExcludesOnlyStandaloneMahjongTitles()
+    {
+        new GeometryProfileRepository(_connectionString).Save(Profile(1, 1, 2, 3, 4, 5));
+        using (var connection = SqliteConnectionFactory.Open(_connectionString))
+        using (var command = connection.CreateCommand())
+        {
+            command.CommandText = """
+                INSERT INTO MameImports(Id,ImportedAtUtc,DurationMilliseconds,TotalMachines,IncludedMachines,MachinesWithDisplays)
+                VALUES(1,'x',0,4,4,0);
+                INSERT INTO MameMachines(RomName,Description,Runnable,IsBios,IsDevice,IsMechanical,ExclusionReasons,IsIncluded,LastImportId,IsPresent,IncludeOnNano) VALUES
+                  ('off','Assigned but off',1,0,0,0,0,1,1,1,0),
+                  ('mahjong','Mahjong Club',1,0,0,0,0,1,1,1,1),
+                  ('substring','Mahjonger Club',1,0,0,0,0,1,1,1,1),
+                  ('unassigned','Unassigned but selected',1,0,0,0,0,1,1,1,1);
+                INSERT INTO GameProfileAssignments(RomName,ProfileId,AssignmentType,UpdatedAtUtc) VALUES
+                  ('off',1,2,'x'),('mahjong',1,2,'x'),('substring',1,2,'x');
+                """;
+            command.ExecuteNonQuery();
+        }
+        var result = new FirmwareDatabaseGenerator(_connectionString).Preview();
+        Assert.Equal(new[] { "substring" }, result.Games.Select(x => x.RomName));
+        Assert.Equal(3, result.Statistics.EffectiveAssignmentCount);
+        Assert.Equal(3, result.Statistics.NanoSelectedCount);
+        Assert.Equal(1, result.Statistics.ExcludedMahjongCount);
+        Assert.Equal(1, result.Statistics.GameCount);
+    }
+
+    [Theory]
+    [InlineData("Mahjong Club", true)]
+    [InlineData("SUPER MAHJONG", true)]
+    [InlineData("Mahjonger", false)]
+    [InlineData("Mahjongg", false)]
+    public void MahjongMatchingUsesCaseInsensitiveWordBoundaries(string description, bool expected) =>
+        Assert.Equal(expected, FirmwareDatabaseGenerator.IsMahjongDescription(description));
+
+    [Fact]
+    public void DirectGenerationExcludesMahjongButNotContainingWords()
+    {
+        var result = FirmwareDatabaseGenerator.Generate([Profile(1, 1, 1, 1, 1, 1)],
+            [new("mahjong", "The Mahjong Game", 1), new("mahjonger", "The Mahjonger Game", 1)]);
+        Assert.Equal("mahjonger", Assert.Single(result.Games).RomName);
+        Assert.Equal(1, result.Statistics.ExcludedMahjongCount);
     }
 
     [Fact]

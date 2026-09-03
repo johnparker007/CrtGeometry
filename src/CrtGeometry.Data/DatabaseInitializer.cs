@@ -4,7 +4,7 @@ namespace CrtGeometry.Data;
 
 public sealed class DatabaseInitializer(string connectionString)
 {
-    public const int CurrentVersion = 3;
+    public const int CurrentVersion = 4;
     public void Initialize()
     {
         using var connection = SqliteConnectionFactory.Open(connectionString);
@@ -31,10 +31,35 @@ public sealed class DatabaseInitializer(string connectionString)
             version = 3;
         }
 
+        if (version < 4)
+        {
+            ApplyVersion4(connection);
+            version = 4;
+        }
+
         if (version > CurrentVersion)
         {
             throw new InvalidOperationException($"Database version {version} is newer than this application supports.");
         }
+    }
+
+    private static void ApplyVersion4(SqliteConnection connection)
+    {
+        using var transaction = connection.BeginTransaction();
+        using var command = connection.CreateCommand();
+        command.Transaction = transaction;
+        command.CommandText = "PRAGMA table_info(MameMachines);";
+        var hasColumn = false;
+        using (var reader = command.ExecuteReader())
+            while (reader.Read()) hasColumn |= string.Equals(reader.GetString(1), "IncludeOnNano", StringComparison.OrdinalIgnoreCase);
+        command.CommandText = (hasColumn ? "" :
+            "ALTER TABLE MameMachines ADD COLUMN IncludeOnNano INTEGER NOT NULL DEFAULT 0 CHECK (IncludeOnNano IN (0,1));") + """
+
+            CREATE INDEX IF NOT EXISTS IX_MameMachines_IncludeOnNano ON MameMachines(IncludeOnNano);
+            PRAGMA user_version = 4;
+            """;
+        command.ExecuteNonQuery();
+        transaction.Commit();
     }
 
     private static void ApplyVersion3(SqliteConnection connection)

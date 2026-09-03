@@ -459,9 +459,10 @@ void printGeometryRows(bool showSelection)
 
 void renderProfileSelector()
 {
+    // HD44780 rows are 20 characters max.
     if (selectedProfileId == 0)
     {
-        lcdPrintLineF(0, F("No generated profiles"));
+        lcdPrintLineF(0, F("No profiles found"));
         lcdPrintLineF(1, F("Generate database"));
         lcdPrintLineF(2, F("from desktop app"));
         lcdPrintLineF(3, F(""));
@@ -471,7 +472,7 @@ void renderProfileSelector()
     char line[21];
     snprintf(line, sizeof(line), "Profile %03u", selectedProfileId);
     lcdPrintLine(0, line);
-    lcdPrintLineF(1, F("Turn=SELECT Click=EDIT"));
+    lcdPrintLineF(1, F("Turn=SELECT Click=GO"));
     printGeometryRows(false);
 }
 
@@ -480,7 +481,7 @@ void renderGeometryEditor()
     char line[21];
     snprintf(line, sizeof(line), "Profile %03u EDIT", selectedProfileId);
     lcdPrintLine(0, line);
-    lcdPrintLineF(1, F("Click=WRITE Hold=BACK"));
+    lcdPrintLineF(1, F("Click=WRITE Hold=UP"));
     printGeometryRows(true);
 }
 

@@ -59,11 +59,14 @@ profile lookup contract documented here.
 
 ## Eligibility and assignment
 
-A generated game is a `MameMachines` row that is both present and included and has
+A generated game is a `MameMachines` row that is present, included, non-clone
+(`CloneOf` is null or empty), and has
 an effective `GameProfileAssignments` row. That table already embodies Phase 4's
 precedence rule: a manual assignment replaces/takes precedence over the automatic
-video-signature assignment. Unassigned, absent, and excluded machines are omitted;
-clones are not specially excluded. Generation rejects duplicate ROM keys, profile
+video-signature assignment. Unassigned, absent, and excluded machines are omitted.
+Clones remain searchable and manually assignable on the desktop, but even manually
+assigned clones are not emitted. This intentionally keeps Nano eligibility simple
+and its flash use predictable. Generation rejects duplicate ROM keys, profile
 IDs outside 1--255, missing referenced profiles, unusable descriptions, excess game
 counts, and offset overflow before atomically replacing the header.
 

@@ -3,6 +3,8 @@ using Microsoft.Data.Sqlite;
 
 namespace CrtGeometry.Data;
 
+public sealed record CalibrationApplyResult(int ProfileId, PropagationPreview Preview);
+
 /// <summary>Owns profile reuse, signature mappings, propagation, and override precedence.</summary>
 public sealed class CalibrationRepository(string connectionString, VideoSignatureService? signatures = null)
 {
@@ -19,8 +21,17 @@ public sealed class CalibrationRepository(string connectionString, VideoSignatur
         var profiles = new GeometryProfileRepository(connectionString).GetAll();
         var existing = profiles.FirstOrDefault(p => Same(p, values));
         var profileId = existing?.Id ?? ProfileIdAllocator.GetLowestAvailable(profiles.Select(p => p.Id));
-        var matches = catalogue.Search(new()).Where(g => _signatures.SelectPrimary(g.Displays).Signature == signature).ToList();
+        var matches = catalogue.Search(new()).Where(g =>
+            _signatures.SelectPrimary(g.Displays).Signature == signature &&
+            (string.IsNullOrWhiteSpace(g.CloneOf) || g.RomName.Equals(source.RomName, StringComparison.OrdinalIgnoreCase))).ToList();
         return new(source.RomName, signature, profileId, existing is not null, matches);
+    }
+
+    /// <summary>Rebuilds the preview from current database and form values immediately before applying it.</summary>
+    public CalibrationApplyResult PreviewAndApply(string sourceRomName, CalibrationValues values, string? notes = null)
+    {
+        var preview = Preview(sourceRomName, values);
+        return new(Apply(preview, values, notes), preview);
     }
 
     public int Apply(PropagationPreview preview, CalibrationValues values, string? notes = null)
@@ -48,7 +59,22 @@ public sealed class CalibrationRepository(string connectionString, VideoSignatur
             SignatureParameters(mapping, preview.Signature); mapping.Parameters.AddWithValue("$p",profileId);
             mapping.Parameters.AddWithValue("$c",calibrationId); mapping.ExecuteNonQuery();
         }
-        foreach (var game in preview.MatchingGames.Where(x => x.IsIncluded && x.IsPresent))
+        // Remove legacy automatic clone rows for this signature. Manual overrides
+        // are intentionally untouched, and an explicit clone source is re-added
+        // below as the sole clone exception.
+        using (var removeClones = connection.CreateCommand())
+        {
+            removeClones.Transaction = tx;
+            removeClones.CommandText = """
+                DELETE FROM GameProfileAssignments
+                WHERE AssignmentType=1 AND Width=$w AND Height=$h AND Rotation=$r AND RefreshMicroHz=$f
+                  AND RomName IN (SELECT RomName FROM MameMachines WHERE CloneOf IS NOT NULL AND trim(CloneOf)<>'');
+                """;
+            SignatureParameters(removeClones, preview.Signature);
+            removeClones.ExecuteNonQuery();
+        }
+        foreach (var game in preview.MatchingGames.Where(x => x.IsIncluded && x.IsPresent &&
+                     (string.IsNullOrWhiteSpace(x.CloneOf) || x.RomName.Equals(preview.SourceRomName, StringComparison.OrdinalIgnoreCase))))
             UpsertAutomatic(connection, tx, game.RomName, profileId, preview.Signature);
         tx.Commit(); return profileId;
     }

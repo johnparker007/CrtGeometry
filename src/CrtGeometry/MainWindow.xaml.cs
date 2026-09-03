@@ -1,5 +1,7 @@
 using System.IO;
 using System.Windows;
+using System.Windows.Controls;
+using System.Windows.Input;
 using CrtGeometry.Data;
 using Microsoft.Data.Sqlite;
 using Microsoft.Win32;
@@ -151,6 +153,10 @@ public partial class MainWindow : Window
     {
         try { await _calibrationViewModel.ApplyAsync(); await _gamesViewModel.RefreshAsync(); ReloadProfiles(); }
         catch(Exception ex) { MessageBox.Show(this,ex.Message,"Cannot apply calibration"); }
+    }
+    private void GeometryTextBox_GotKeyboardFocus(object sender, KeyboardFocusChangedEventArgs e)
+    {
+        if (sender is TextBox textBox) textBox.SelectAll();
     }
     private async void ManualAssign_Click(object sender, RoutedEventArgs e)
     {

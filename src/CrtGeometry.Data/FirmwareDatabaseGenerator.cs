@@ -171,7 +171,7 @@ public sealed class FirmwareDatabaseGenerator(string connectionString)
     private IReadOnlyList<FirmwareGame> LoadEligibleGames()
     {
         using var connection = SqliteConnectionFactory.Open(connectionString); using var command = connection.CreateCommand();
-        command.CommandText = "SELECT m.RomName,m.Description,a.ProfileId FROM MameMachines m JOIN GameProfileAssignments a ON a.RomName=m.RomName WHERE m.IsPresent=1 AND m.IsIncluded=1 ORDER BY m.RomName";
+        command.CommandText = "SELECT m.RomName,m.Description,a.ProfileId FROM MameMachines m JOIN GameProfileAssignments a ON a.RomName=m.RomName WHERE m.IsPresent=1 AND m.IsIncluded=1 AND (m.CloneOf IS NULL OR trim(m.CloneOf)='') ORDER BY m.RomName";
         var games = new List<FirmwareGame>(); using var reader = command.ExecuteReader();
         while (reader.Read()) games.Add(new(reader.GetString(0), reader.IsDBNull(1) ? "" : reader.GetString(1), reader.GetInt32(2)));
         return games;

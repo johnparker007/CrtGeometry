@@ -47,9 +47,13 @@ public sealed class CalibrationViewModel : INotifyPropertyChanged
     }
     public async Task ApplyAsync()
     {
-        if(Preview is null) throw new InvalidOperationException("Preview the propagation first."); Validate();
-        var id=await Task.Run(()=>_calibrations.Apply(Preview,new(HSH,VSL,VAM,VSC,VSH)));
-        Status=$"Profile {id} applied automatically; manual overrides were preserved.";
+        if (SelectedGame is null) throw new InvalidOperationException("Select an exact MAME game first.");
+        Validate();
+        var sourceRomName = SelectedGame.RomName;
+        var values = new CalibrationValues(HSH,VSL,VAM,VSC,VSH);
+        var result = await Task.Run(() => _calibrations.PreviewAndApply(sourceRomName, values));
+        Preview = result.Preview;
+        Status=$"Profile {result.ProfileId} applied to {result.Preview.MatchingGames.Count} games.";
     }
     private void Validate() { foreach(var v in new[]{HSH,VSL,VAM,VSC,VSH}) if(v is <0 or >63) throw new InvalidOperationException("Geometry values must be between 0 and 63."); }
     private void Changed([CallerMemberName]string? name=null)=>PropertyChanged?.Invoke(this,new(name));

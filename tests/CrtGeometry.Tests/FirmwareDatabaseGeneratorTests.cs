@@ -174,14 +174,16 @@ public sealed class FirmwareDatabaseGeneratorTests : IDisposable
         {
             command.CommandText = """
                 INSERT INTO MameImports(Id,ImportedAtUtc,DurationMilliseconds,TotalMachines,IncludedMachines,MachinesWithDisplays)
-                VALUES(1,'x',0,4,2,0);
+                VALUES(1,'x',0,5,3,0);
                 INSERT INTO MameMachines(RomName,Description,Runnable,IsBios,IsDevice,IsMechanical,ExclusionReasons,IsIncluded,LastImportId,IsPresent) VALUES
                   ('good','Good Game',1,0,0,0,0,1,1,1),
+                  ('goodclone','Good Game Clone',1,0,0,0,0,1,1,1),
                   ('unassigned','No Assignment',1,0,0,0,0,1,1,1),
                   ('absent','Absent Game',1,0,0,0,0,1,1,0),
                   ('excluded','Excluded Game',1,0,0,0,8,0,1,1);
                 INSERT INTO GameProfileAssignments(RomName,ProfileId,AssignmentType,UpdatedAtUtc) VALUES
-                  ('good',1,2,'x'),('absent',1,2,'x'),('excluded',1,2,'x');
+                  ('good',1,2,'x'),('goodclone',1,2,'x'),('absent',1,2,'x'),('excluded',1,2,'x');
+                UPDATE MameMachines SET CloneOf='good' WHERE RomName='goodclone';
                 """;
             command.ExecuteNonQuery();
         }
@@ -189,6 +191,7 @@ public sealed class FirmwareDatabaseGeneratorTests : IDisposable
         Assert.Single(result.Games);
         Assert.Equal("good", result.Games[0].RomName);
         Assert.Equal(1, result.Games[0].ProfileId);
+        Assert.DoesNotContain(result.Games, game => game.RomName == "goodclone");
     }
 
     [Fact]

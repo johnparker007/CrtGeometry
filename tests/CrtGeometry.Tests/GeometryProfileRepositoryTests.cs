@@ -22,7 +22,7 @@ public sealed class GeometryProfileRepositoryTests : IDisposable
         using var connection = SqliteConnectionFactory.Open(_connectionString);
         using var command = connection.CreateCommand();
         command.CommandText = "PRAGMA user_version;";
-        Assert.Equal(3L, command.ExecuteScalar());
+        Assert.Equal((long)DatabaseInitializer.CurrentVersion, command.ExecuteScalar());
     }
 
     [Fact]

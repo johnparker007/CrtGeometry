@@ -84,6 +84,13 @@ public partial class MainWindow : Window
         FirmwareHighestId.Text = statistics.HighestProfileId.ToString();
         FirmwareTableBytes.Text = $"{statistics.ProfileTableBytes} bytes";
         FirmwareValidityBytes.Text = $"{statistics.ValidityBytes} bytes";
+        FirmwareGameCount.Text = statistics.GameCount.ToString();
+        FirmwareNameBytes.Text = $"{statistics.PackedNameBytes} bytes";
+        FirmwareOffsetBytes.Text = $"{statistics.OffsetBytes} bytes";
+        FirmwareMappingBytes.Text = $"{statistics.MappingBytes} bytes";
+        FirmwareJumpBytes.Text = $"{statistics.JumpTableBytes} bytes";
+        FirmwareAverageName.Text = $"{statistics.AverageNameLength:0.0} chars";
+        FirmwareLongestName.Text = $"{statistics.LongestNameLength} chars";
         FirmwareTotalBytes.Text = $"{statistics.TotalBytes} bytes";
     }
 

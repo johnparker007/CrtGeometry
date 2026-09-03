@@ -16,10 +16,11 @@
     UI
     ------------------------------------------------------------
 
-    PROFILE SELECTOR
+    GAME BROWSER
 
-      Encoder 1 turn:
-        Browse generated profile IDs
+      Encoder 1 turn: jump #/A-Z group
+      Encoder 2 turn: browse within group
+      Encoder 3 turn: horizontally scroll long title
 
       Any encoder click:
         Load selected profile into editable working geometry
@@ -206,12 +207,15 @@ struct RawGeometry
 
 enum MenuLevel
 {
-    MENU_PROFILE_SELECT = 0,
+    MENU_GAME_BROWSER = 0,
     MENU_GEOMETRY
 };
 
-MenuLevel menuLevel = MENU_PROFILE_SELECT;
+MenuLevel menuLevel = MENU_GAME_BROWSER;
 uint8_t selectedProfileId = 0;
+uint16_t selectedGameIndex = 0;
+uint8_t selectedAlphabetGroup = 0;
+uint16_t gameNameScroll = 0;
 
 Geometry currentGeometry = { 33, 11, 30, 13, 63 };
 GeometryParameter selectedParameter = PARAM_HSH;
@@ -295,6 +299,56 @@ bool loadGeneratedProfile(uint8_t profileId, Geometry& result)
     result.vsc = generated.vsc;
     result.vsh = generated.vsh;
     return true;
+}
+
+uint8_t generatedGameProfileId(uint16_t index)
+{
+    return index < GENERATED_GAME_COUNT ? pgm_read_byte(&GENERATED_GAME_PROFILE_IDS[index]) : 0;
+}
+
+uint32_t generatedGameNameBitOffset(uint16_t index)
+{
+    if (index >= GENERATED_GAME_COUNT) return GENERATED_TOTAL_NAME_BITS;
+    return pgm_read_dword(&GENERATED_GAME_NAME_BIT_OFFSETS[index]);
+}
+
+uint16_t generatedGameNameLength(uint16_t index)
+{
+    if (index >= GENERATED_GAME_COUNT) return 0;
+    uint32_t end = index + 1 < GENERATED_GAME_COUNT
+        ? generatedGameNameBitOffset(index + 1) : GENERATED_TOTAL_NAME_BITS;
+    return (uint16_t)((end - generatedGameNameBitOffset(index)) / 6);
+}
+
+char generatedNameCharacter(uint32_t bitOffset)
+{
+    uint16_t byteIndex = (uint16_t)(bitOffset >> 3);
+    uint8_t shift = bitOffset & 7;
+    uint16_t bits = pgm_read_byte(&GENERATED_GAME_NAME_BITS[byteIndex]);
+    if (shift > 2) bits |= (uint16_t)pgm_read_byte(&GENERATED_GAME_NAME_BITS[byteIndex + 1]) << 8;
+    uint8_t symbol = (bits >> shift) & 0x3F;
+    return (char)pgm_read_byte(&GENERATED_NAME_ALPHABET[symbol]);
+}
+
+void decodeGeneratedGameName(uint16_t index, char* output, uint8_t capacity)
+{
+    if (capacity == 0) return;
+    uint16_t length = generatedGameNameLength(index);
+    uint32_t bit = generatedGameNameBitOffset(index);
+    uint8_t count = length < capacity - 1 ? length : capacity - 1;
+    for (uint8_t i = 0; i < count; ++i, bit += 6) output[i] = generatedNameCharacter(bit);
+    output[count] = '\0';
+}
+
+void decodeGeneratedGameNameWindow(uint16_t index, uint16_t start, char* output, uint8_t capacity)
+{
+    if (capacity == 0) return;
+    uint16_t length = generatedGameNameLength(index);
+    if (start >= length) start = 0;
+    uint8_t count = length - start < capacity - 1 ? length - start : capacity - 1;
+    uint32_t bit = generatedGameNameBitOffset(index) + (uint32_t)start * 6;
+    for (uint8_t i = 0; i < count; ++i, bit += 6) output[i] = generatedNameCharacter(bit);
+    output[count] = '\0';
 }
 
 // ============================================================
@@ -426,21 +480,52 @@ void lcdPrintLineF(
 // GENERATED PROFILE SELECTION / LCD UI
 // ============================================================
 
-uint8_t findNextGeneratedProfile(uint8_t from, int8_t movement)
+uint16_t alphabetGroupStart(uint8_t group)
 {
-    if (GENERATED_PROFILE_COUNT == 0)
-        return 0;
+    return pgm_read_word(&GENERATED_ALPHABET_JUMPS[group]);
+}
 
-    uint8_t candidate = from;
-    for (uint16_t checked = 0; checked < 255; ++checked)
+uint16_t alphabetGroupEnd(uint8_t group)
+{
+    for (uint8_t next = group + 1; next < 27; ++next)
     {
-        candidate = movement > 0
-            ? (candidate == 255 ? 1 : (uint8_t)(candidate + 1))
-            : (candidate <= 1 ? 255 : (uint8_t)(candidate - 1));
-        if (generatedProfileExists(candidate))
-            return candidate;
+        uint16_t start = alphabetGroupStart(next);
+        if (start < GENERATED_GAME_COUNT) return start;
     }
-    return 0;
+    return GENERATED_GAME_COUNT;
+}
+
+void selectAlphabetGroup(int8_t movement)
+{
+    if (GENERATED_GAME_COUNT == 0) return;
+    for (uint8_t checked = 0; checked < 27; ++checked)
+    {
+        selectedAlphabetGroup = movement > 0
+            ? (selectedAlphabetGroup == 26 ? 0 : selectedAlphabetGroup + 1)
+            : (selectedAlphabetGroup == 0 ? 26 : selectedAlphabetGroup - 1);
+        uint16_t start = alphabetGroupStart(selectedAlphabetGroup);
+        if (start < GENERATED_GAME_COUNT && start < alphabetGroupEnd(selectedAlphabetGroup))
+        {
+            selectedGameIndex = start;
+            gameNameScroll = 0;
+            renderUI();
+            return;
+        }
+    }
+}
+
+void moveGame(int16_t movement)
+{
+    if (GENERATED_GAME_COUNT == 0) return;
+    int32_t next = (int32_t)selectedGameIndex + movement;
+    if (next < 0) next = 0;
+    if (next >= GENERATED_GAME_COUNT) next = GENERATED_GAME_COUNT - 1;
+    selectedGameIndex = (uint16_t)next;
+    gameNameScroll = 0;
+    for (uint8_t group = 0; group < 27; ++group)
+        if (alphabetGroupStart(group) <= selectedGameIndex && selectedGameIndex < alphabetGroupEnd(group))
+            selectedAlphabetGroup = group;
+    renderUI();
 }
 
 void printGeometryRows(bool showSelection)
@@ -457,40 +542,32 @@ void printGeometryRows(bool showSelection)
     lcdPrintLine(3, line);
 }
 
-void renderProfileSelector()
+void renderGameBrowser()
 {
-    // HD44780 rows are 20 characters max.
-    if (selectedProfileId == 0)
+    if (GENERATED_GAME_COUNT == 0)
     {
-        lcdPrintLineF(0, F("No profiles found"));
-        lcdPrintLineF(1, F("Generate database"));
-        lcdPrintLineF(2, F("from desktop app"));
-        lcdPrintLineF(3, F(""));
-        return;
+        lcdPrintLineF(0, F("No assigned games")); lcdPrintLineF(1, F("Generate database"));
+        lcdPrintLineF(2, F("from desktop app")); lcdPrintLineF(3, F("")); return;
     }
-
-    char line[21];
-    snprintf(line, sizeof(line), "Profile %03u", selectedProfileId);
+    char line[41];
+    char group = selectedAlphabetGroup == 0 ? '#' : 'A' + selectedAlphabetGroup - 1;
+    snprintf(line, sizeof(line), "Group %c  Game %u/%u", group, selectedGameIndex + 1, GENERATED_GAME_COUNT);
     lcdPrintLine(0, line);
-    lcdPrintLineF(1, F("Turn=SELECT Click=GO"));
-    printGeometryRows(false);
+    decodeGeneratedGameNameWindow(selectedGameIndex, gameNameScroll, line, 21); lcdPrintLine(1, line);
+    snprintf(line, sizeof(line), "Profile %03u", generatedGameProfileId(selectedGameIndex)); lcdPrintLine(2, line);
+    lcdPrintLineF(3, F("E1=ABC E2=GAME E3=>"));
 }
 
 void renderGeometryEditor()
 {
-    char line[21];
-    snprintf(line, sizeof(line), "Profile %03u EDIT", selectedProfileId);
-    lcdPrintLine(0, line);
-    lcdPrintLineF(1, F("Click=WRITE Hold=UP"));
+    char line[41]; decodeGeneratedGameName(selectedGameIndex, line, sizeof(line)); lcdPrintLine(0, line);
+    snprintf(line, sizeof(line), "P%03u Click=WRITE", selectedProfileId); lcdPrintLine(1, line);
     printGeometryRows(true);
 }
 
 void renderUI()
 {
-    if (menuLevel == MENU_PROFILE_SELECT)
-        renderProfileSelector();
-    else
-        renderGeometryEditor();
+    if (menuLevel == MENU_GAME_BROWSER) renderGameBrowser(); else renderGeometryEditor();
 }
 
 // ============================================================
@@ -1599,39 +1676,27 @@ ButtonEvent updateRotaryButton(
 // PROFILE NAVIGATION / BUTTON ACTIONS
 // ============================================================
 
-void moveProfile(int8_t movement)
-{
-    uint8_t next = findNextGeneratedProfile(selectedProfileId, movement);
-    if (next != 0)
-    {
-        selectedProfileId = next;
-        loadGeneratedProfile(selectedProfileId, currentGeometry);
-        renderUI();
-    }
-}
-
 void handleClick()
 {
-    if (menuLevel == MENU_PROFILE_SELECT)
+    if (menuLevel == MENU_GAME_BROWSER)
     {
-        if (selectedProfileId != 0 && loadGeneratedProfile(selectedProfileId, currentGeometry))
+        uint8_t profileId = generatedGameProfileId(selectedGameIndex);
+        if (profileId != 0 && loadGeneratedProfile(profileId, currentGeometry))
         {
+            selectedProfileId = profileId;
             menuLevel = MENU_GEOMETRY;
             renderUI();
         }
     }
-    else
-    {
-        writeCurrentGeometry();
-    }
+    else writeCurrentGeometry();
 }
 
 void handleLongPress()
 {
     if (menuLevel == MENU_GEOMETRY)
     {
-        menuLevel = MENU_PROFILE_SELECT;
-        loadGeneratedProfile(selectedProfileId, currentGeometry);
+        menuLevel = MENU_GAME_BROWSER;
+        loadGeneratedProfile(generatedGameProfileId(selectedGameIndex), currentGeometry);
         renderUI();
     }
 }
@@ -1654,8 +1719,8 @@ void updateEncoders()
 
     if (movement1 != 0)
     {
-        if (menuLevel == MENU_PROFILE_SELECT)
-            moveProfile(movement1);
+        if (menuLevel == MENU_GAME_BROWSER)
+            selectAlphabetGroup(movement1);
     }
 
 
@@ -1669,7 +1734,11 @@ void updateEncoders()
             encoder2);
 
 
-    if (movement2 != 0 &&
+    if (movement2 != 0 && menuLevel == MENU_GAME_BROWSER)
+    {
+        moveGame(movement2);
+    }
+    else if (movement2 != 0 &&
         menuLevel == MENU_GEOMETRY)
     {
         int next =
@@ -1739,7 +1808,17 @@ void updateEncoders()
             encoder3);
 
 
-    if (movement3 != 0 &&
+    if (movement3 != 0 && menuLevel == MENU_GAME_BROWSER)
+    {
+        uint16_t length = generatedGameNameLength(selectedGameIndex);
+        int32_t next = (int32_t)gameNameScroll + movement3;
+        uint16_t maximum = length > 20 ? length - 20 : 0;
+        if (next < 0) next = 0;
+        if (next > maximum) next = maximum;
+        gameNameScroll = (uint16_t)next;
+        renderUI();
+    }
+    else if (movement3 != 0 &&
         menuLevel == MENU_GEOMETRY)
     {
         adjustSelectedParameter(
@@ -1864,9 +1943,15 @@ void setup()
     Wire.begin();
 
 
-    selectedProfileId = findNextGeneratedProfile(0, 1);
-    if (selectedProfileId != 0)
+    if (GENERATED_GAME_COUNT != 0)
+    {
+        selectedGameIndex = 0;
+        for (uint8_t group = 0; group < 27; ++group)
+            if (alphabetGroupStart(group) == 0 && alphabetGroupEnd(group) > 0)
+                selectedAlphabetGroup = group;
+        selectedProfileId = generatedGameProfileId(0);
         loadGeneratedProfile(selectedProfileId, currentGeometry);
+    }
 
 
     delay(300);
@@ -1881,7 +1966,7 @@ void setup()
         F("Controls:"));
 
     Serial.println(
-        F(" E1 turn  = select profile"));
+        F(" E1 turn  = alphabet group"));
 
     Serial.println(
         F(" E2 turn  = geometry parameter"));
@@ -1893,7 +1978,7 @@ void setup()
         F(" Any click = edit/write"));
 
     Serial.println(
-        F(" Any hold  = selector"));
+        F(" Any hold  = game browser"));
 
     Serial.println();
 

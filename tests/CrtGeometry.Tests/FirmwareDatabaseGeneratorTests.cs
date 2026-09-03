@@ -28,7 +28,7 @@ public sealed class FirmwareDatabaseGeneratorTests : IDisposable
         Assert.Equal(0, result.Statistics.HighestProfileId);
         Assert.Equal(1280, result.Statistics.ProfileTableBytes);
         Assert.Equal(32, result.Statistics.ValidityBytes);
-        Assert.Equal(1312, result.Statistics.TotalBytes);
+        Assert.Equal(1366, result.Statistics.TotalBytes);
         Assert.Equal(256, result.Content.Split('\n').Count(line => line.TrimStart().StartsWith("{ ")));
         Assert.Contains("{ 0, 0, 0, 0, 0 }, // 0\n", result.Content);
         Assert.Contains("0x00, 0x00, 0x00, 0x00", result.Content);
@@ -115,6 +115,92 @@ public sealed class FirmwareDatabaseGeneratorTests : IDisposable
         Assert.Throws<ArgumentOutOfRangeException>(() => new FirmwareDatabaseGenerator(_connectionString).Write(output));
         Assert.Equal("known good", File.ReadAllText(target));
         Assert.Single(Directory.GetFiles(output));
+    }
+
+    [Fact]
+    public void NamesNormalizePackContinuouslyAndRoundTrip()
+    {
+        Assert.Equal("R-TYPE LEO'S + 2!", FirmwareDatabaseGenerator.NormalizeDisplayName("  R-Type\tLéo’s + 2! ☃ "));
+        var result = FirmwareDatabaseGenerator.Generate([Profile(1, 1, 2, 3, 4, 5)],
+            [new("rtype", "R-Type", 1), new("long", "A Recognizable Game Title Longer Than Twenty", 1)]);
+
+        Assert.Equal(0U, result.Games[0].NameBitOffset);
+        Assert.True(result.Games.Single(g => g.RomName == "long").DisplayName.Length > 20);
+        for (var i = 0; i < result.Games.Count; i++)
+        {
+            var end = i + 1 < result.Games.Count ? result.Games[i + 1].NameBitOffset : (uint)result.Statistics.TotalNameBits;
+            Assert.Equal(result.Games[i].DisplayName,
+                FirmwareDatabaseGenerator.DecodeName(result.PackedNames, result.Games[i].NameBitOffset, end - result.Games[i].NameBitOffset));
+        }
+        Assert.Equal(result.Games[0].DisplayName.Length * 6U, result.Games[1].NameBitOffset);
+    }
+
+    [Fact]
+    public void CollisionsAreVisibleAndOrderingIsDeterministic()
+    {
+        var games = new[] { new FirmwareGame("dkongb", "Donkey Kong", 7), new("dkong", "Donkey Kong", 7) };
+        var result = FirmwareDatabaseGenerator.Generate([Profile(7, 1, 1, 1, 1, 1)], games.Reverse());
+        Assert.Equal(new[] { "DONKEY KONG [DKONG]", "DONKEY KONG [DKONGB]" }, result.Games.Select(g => g.DisplayName));
+        Assert.Equal(result.Content, FirmwareDatabaseGenerator.Generate([Profile(7, 1, 1, 1, 1, 1)], games).Content);
+        Assert.All(result.Games, g => Assert.Equal(7, g.ProfileId));
+    }
+
+    [Theory]
+    [InlineData(700)]
+    [InlineData(1500)]
+    public void SyntheticDatabasesUseChecked32BitContinuousOffsets(int count)
+    {
+        var games = Enumerable.Range(0, count).Select(i => new FirmwareGame($"rom{i:D4}", $"Game {i:D4} Long Name", 255));
+        var result = FirmwareDatabaseGenerator.Generate([Profile(255, 1, 2, 3, 4, 5)], games);
+        Assert.Equal(count, result.Statistics.GameCount);
+        Assert.Equal(count * 4, result.Statistics.OffsetBytes);
+        Assert.Equal(result.Statistics.TotalNameBits, result.Games.Sum(g => g.DisplayName.Length) * 6);
+        Assert.True(result.Games[^1].NameBitOffset > ushort.MaxValue || count == 700);
+    }
+
+    [Fact]
+    public void InvalidMappingsAndOffsetOverflowAreRejected()
+    {
+        Assert.Throws<InvalidDataException>(() => FirmwareDatabaseGenerator.Generate([Profile(1, 1, 1, 1, 1, 1)], [new("bad", "Bad", 2)]));
+        Assert.Throws<InvalidDataException>(() => FirmwareDatabaseGenerator.ValidateTotalNameBits((long)uint.MaxValue + 1));
+    }
+
+    [Fact]
+    public void PreviewEmitsOnlyAssignedPresentIncludedGames()
+    {
+        new GeometryProfileRepository(_connectionString).Save(Profile(1, 1, 2, 3, 4, 5));
+        using (var connection = SqliteConnectionFactory.Open(_connectionString))
+        using (var command = connection.CreateCommand())
+        {
+            command.CommandText = """
+                INSERT INTO MameImports(Id,ImportedAtUtc,DurationMilliseconds,TotalMachines,IncludedMachines,MachinesWithDisplays)
+                VALUES(1,'x',0,4,2,0);
+                INSERT INTO MameMachines(RomName,Description,Runnable,IsBios,IsDevice,IsMechanical,ExclusionReasons,IsIncluded,LastImportId,IsPresent) VALUES
+                  ('good','Good Game',1,0,0,0,0,1,1,1),
+                  ('unassigned','No Assignment',1,0,0,0,0,1,1,1),
+                  ('absent','Absent Game',1,0,0,0,0,1,1,0),
+                  ('excluded','Excluded Game',1,0,0,0,8,0,1,1);
+                INSERT INTO GameProfileAssignments(RomName,ProfileId,AssignmentType,UpdatedAtUtc) VALUES
+                  ('good',1,2,'x'),('absent',1,2,'x'),('excluded',1,2,'x');
+                """;
+            command.ExecuteNonQuery();
+        }
+        var result = new FirmwareDatabaseGenerator(_connectionString).Preview();
+        Assert.Single(result.Games);
+        Assert.Equal("good", result.Games[0].RomName);
+        Assert.Equal(1, result.Games[0].ProfileId);
+    }
+
+    [Fact]
+    public void JumpTableHasHashLettersAndEmptySentinels()
+    {
+        var result = FirmwareDatabaseGenerator.Generate([Profile(1, 1, 1, 1, 1, 1)],
+            [new("num", "1942", 1), new("alpha", "Alpha", 1), new("middle", "Mario", 1), new("zed", "Zaxxon", 1)]);
+        Assert.Equal(0, result.AlphabetJumps[0]);
+        Assert.Equal(1, result.AlphabetJumps[1]);
+        Assert.Equal(result.Statistics.GameCount, result.AlphabetJumps[2]);
+        Assert.Equal(2, result.AlphabetJumps['M' - 'A' + 1]);
+        Assert.Equal(3, result.AlphabetJumps[26]);
     }
 
     private static GeometryProfile Profile(int id, int hsh, int vsl, int vam, int vsc, int vsh) =>

@@ -16,18 +16,18 @@
           <TextBlock Margin="0,4,0,0" Text="{Binding ResultSummary}"/>
          </WrapPanel>
         </StackPanel>
-        <DataGrid Grid.Row="1" ItemsSource="{Binding Games}" SelectedItem="{Binding SelectedGame}" AutoGenerateColumns="False" IsReadOnly="True"
+        <DataGrid Grid.Row="1" ItemsSource="{Binding Games}" SelectedItem="{Binding SelectedGame, Mode=TwoWay}" AutoGenerateColumns="False" IsReadOnly="True"
                   CanUserAddRows="False" EnableRowVirtualization="True" EnableColumnVirtualization="True" VirtualizingPanel.IsVirtualizing="True" VirtualizingPanel.VirtualizationMode="Recycling">
          <DataGrid.Columns>
-          <DataGridTextColumn Header="Description" Binding="{Binding DisplayName}" Width="2*" SortMemberPath="Description"/>
-          <DataGridTextColumn Header="ROM" Binding="{Binding RomName}" Width="110"/>
-          <DataGridTextColumn Header="Year" Binding="{Binding Year}" Width="70"/>
-          <DataGridTextColumn Header="Manufacturer" Binding="{Binding Manufacturer}" Width="*"/>
-          <DataGridTextColumn Header="Resolution" Binding="{Binding ResolutionSummary}" Width="145" CanUserSort="False"/>
-          <DataGridTextColumn Header="Orientation" Binding="{Binding RotationSummary}" Width="90" CanUserSort="False"/>
-          <DataGridTextColumn Header="Refresh" Binding="{Binding RefreshSummary}" Width="105" CanUserSort="False"/>
-          <DataGridTextColumn Header="Status" Binding="{Binding InclusionStatus}" Width="150"/>
-          <DataGridTextColumn Header="Profile" Binding="{Binding ProfileStatus}" Width="90"/>
+          <DataGridTextColumn Header="Description" Binding="{Binding DisplayName, Mode=OneWay}" Width="2*" SortMemberPath="Description"/>
+          <DataGridTextColumn Header="ROM" Binding="{Binding RomName, Mode=OneWay}" Width="110"/>
+          <DataGridTextColumn Header="Year" Binding="{Binding Year, Mode=OneWay}" Width="70"/>
+          <DataGridTextColumn Header="Manufacturer" Binding="{Binding Manufacturer, Mode=OneWay}" Width="*"/>
+          <DataGridTextColumn Header="Resolution" Binding="{Binding ResolutionSummary, Mode=OneWay}" Width="145" CanUserSort="False"/>
+          <DataGridTextColumn Header="Orientation" Binding="{Binding RotationSummary, Mode=OneWay}" Width="90" CanUserSort="False"/>
+          <DataGridTextColumn Header="Refresh" Binding="{Binding RefreshSummary, Mode=OneWay}" Width="105" CanUserSort="False"/>
+          <DataGridTextColumn Header="Status" Binding="{Binding InclusionStatus, Mode=OneWay}" Width="150"/>
+          <DataGridTextColumn Header="Profile" Binding="{Binding ProfileStatus, Mode=OneWay}" Width="90"/>
          </DataGrid.Columns>
         </DataGrid>
         <GroupBox Grid.Row="2" Header="Selected game details" Margin="0,10,0,0">
@@ -49,11 +49,11 @@
           </StackPanel>
           <DataGrid Grid.Column="1" Margin="12,0,0,0" ItemsSource="{Binding SelectedGame.Displays}" AutoGenerateColumns="False" IsReadOnly="True" CanUserAddRows="False">
            <DataGrid.Columns>
-            <DataGridTextColumn Header="Type" Binding="{Binding Type}"/><DataGridTextColumn Header="Width" Binding="{Binding Width}"/><DataGridTextColumn Header="Height" Binding="{Binding Height}"/>
-            <DataGridTextColumn Header="Rotate" Binding="{Binding Rotate}"/><DataGridTextColumn Header="Refresh" Binding="{Binding Refresh,StringFormat={}{0:0.######}}"/>
-            <DataGridTextColumn Header="Pixel clock" Binding="{Binding PixelClock}"/><DataGridTextColumn Header="HTotal" Binding="{Binding HTotal}"/>
-            <DataGridTextColumn Header="HB start" Binding="{Binding HBStart}"/><DataGridTextColumn Header="HB end" Binding="{Binding HBEnd}"/>
-            <DataGridTextColumn Header="VTotal" Binding="{Binding VTotal}"/><DataGridTextColumn Header="VB start" Binding="{Binding VBStart}"/><DataGridTextColumn Header="VB end" Binding="{Binding VBEnd}"/>
+            <DataGridTextColumn Header="Type" Binding="{Binding Type, Mode=OneWay}"/><DataGridTextColumn Header="Width" Binding="{Binding Width, Mode=OneWay}"/><DataGridTextColumn Header="Height" Binding="{Binding Height, Mode=OneWay}"/>
+            <DataGridTextColumn Header="Rotate" Binding="{Binding Rotate, Mode=OneWay}"/><DataGridTextColumn Header="Refresh" Binding="{Binding Refresh, Mode=OneWay, StringFormat={}{0:0.######}}"/>
+            <DataGridTextColumn Header="Pixel clock" Binding="{Binding PixelClock, Mode=OneWay}"/><DataGridTextColumn Header="HTotal" Binding="{Binding HTotal, Mode=OneWay}"/>
+            <DataGridTextColumn Header="HB start" Binding="{Binding HBStart, Mode=OneWay}"/><DataGridTextColumn Header="HB end" Binding="{Binding HBEnd, Mode=OneWay}"/>
+            <DataGridTextColumn Header="VTotal" Binding="{Binding VTotal, Mode=OneWay}"/><DataGridTextColumn Header="VB start" Binding="{Binding VBStart, Mode=OneWay}"/><DataGridTextColumn Header="VB end" Binding="{Binding VBEnd, Mode=OneWay}"/>
            </DataGrid.Columns>
           </DataGrid>
          </Grid>
@@ -64,13 +64,13 @@
        <Grid x:Name="CalibrationPanel" Margin="8">
         <Grid.RowDefinitions><RowDefinition Height="Auto"/><RowDefinition Height="2*"/><RowDefinition Height="Auto"/><RowDefinition Height="2*"/></Grid.RowDefinitions>
         <StackPanel><TextBlock FontSize="24" FontWeight="SemiBold" Text="New calibration"/><TextBlock Text="Search by title, ROM, manufacturer, or year; choose the exact human-readable MAME entry."/><TextBox Margin="0,8" Width="380" HorizontalAlignment="Left" Text="{Binding SearchText,UpdateSourceTrigger=PropertyChanged}"/></StackPanel>
-        <DataGrid Grid.Row="1" ItemsSource="{Binding Candidates}" SelectedItem="{Binding SelectedGame}" AutoGenerateColumns="False" IsReadOnly="True" CanUserAddRows="False">
-         <DataGrid.Columns><DataGridTextColumn Header="Description" Binding="{Binding DisplayName}" Width="2*"/><DataGridTextColumn Header="ROM" Binding="{Binding RomName}" Width="120"/><DataGridTextColumn Header="Year" Binding="{Binding Year}" Width="70"/><DataGridTextColumn Header="Manufacturer" Binding="{Binding Manufacturer}" Width="*"/><DataGridTextColumn Header="Video" Binding="{Binding VideoMode.Message}" Width="250"/></DataGrid.Columns>
+        <DataGrid Grid.Row="1" ItemsSource="{Binding Candidates}" SelectedItem="{Binding SelectedGame, Mode=TwoWay}" AutoGenerateColumns="False" IsReadOnly="True" CanUserAddRows="False">
+         <DataGrid.Columns><DataGridTextColumn Header="Description" Binding="{Binding DisplayName, Mode=OneWay}" Width="2*"/><DataGridTextColumn Header="ROM" Binding="{Binding RomName, Mode=OneWay}" Width="120"/><DataGridTextColumn Header="Year" Binding="{Binding Year, Mode=OneWay}" Width="70"/><DataGridTextColumn Header="Manufacturer" Binding="{Binding Manufacturer, Mode=OneWay}" Width="*"/><DataGridTextColumn Header="Video" Binding="{Binding VideoMode.Message, Mode=OneWay}" Width="250"/></DataGrid.Columns>
         </DataGrid>
         <StackPanel Grid.Row="2" Margin="0,8" Orientation="Horizontal"><StackPanel.Resources><Style x:Key="GeometryValueTextBox" TargetType="TextBox"><EventSetter Event="GotKeyboardFocus" Handler="GeometryTextBox_GotKeyboardFocus"/></Style></StackPanel.Resources><TextBlock Margin="0,4,15,0" Text="{Binding VideoModeMessage}"/>
          <TextBlock Margin="4" Text="HSH"/><TextBox Width="38" Style="{StaticResource GeometryValueTextBox}" Text="{Binding HSH}"/><TextBlock Margin="4" Text="VSL"/><TextBox Width="38" Style="{StaticResource GeometryValueTextBox}" Text="{Binding VSL}"/><TextBlock Margin="4" Text="VAM"/><TextBox Width="38" Style="{StaticResource GeometryValueTextBox}" Text="{Binding VAM}"/><TextBlock Margin="4" Text="VSC"/><TextBox Width="38" Style="{StaticResource GeometryValueTextBox}" Text="{Binding VSC}"/><TextBlock Margin="4" Text="VSH"/><TextBox Width="38" Style="{StaticResource GeometryValueTextBox}" Text="{Binding VSH}"/>
          <Button Margin="12,0,4,0" Click="PreviewCalibration_Click">Preview</Button><Button Click="ApplyCalibration_Click">Confirm / apply</Button></StackPanel>
-        <DockPanel Grid.Row="3"><StackPanel DockPanel.Dock="Top"><TextBlock FontWeight="Bold" Text="{Binding PreviewSummary}"/><TextBlock Foreground="DarkGreen" Text="{Binding Status}"/></StackPanel><DataGrid ItemsSource="{Binding MatchingGames}" IsReadOnly="True" AutoGenerateColumns="False"><DataGrid.Columns><DataGridTextColumn Header="Description" Binding="{Binding DisplayName}" Width="2*"/><DataGridTextColumn Header="ROM" Binding="{Binding RomName}" Width="*"/><DataGridTextColumn Header="Current assignment" Binding="{Binding ProfileStatus}" Width="150"/></DataGrid.Columns></DataGrid></DockPanel>
+        <DockPanel Grid.Row="3"><StackPanel DockPanel.Dock="Top"><TextBlock FontWeight="Bold" Text="{Binding PreviewSummary}"/><TextBlock Foreground="DarkGreen" Text="{Binding Status}"/></StackPanel><DataGrid ItemsSource="{Binding MatchingGames}" IsReadOnly="True" AutoGenerateColumns="False"><DataGrid.Columns><DataGridTextColumn Header="Description" Binding="{Binding DisplayName, Mode=OneWay}" Width="2*"/><DataGridTextColumn Header="ROM" Binding="{Binding RomName, Mode=OneWay}" Width="*"/><DataGridTextColumn Header="Current assignment" Binding="{Binding ProfileStatus, Mode=OneWay}" Width="150"/></DataGrid.Columns></DataGrid></DockPanel>
        </Grid>
       </TabItem>
       <TabItem Header="Profiles">
@@ -83,16 +83,16 @@
         <DataGrid x:Name="ProfilesGrid" ItemsSource="{Binding Profiles}" SelectedItem="{Binding SelectedProfile}"
                   AutoGenerateColumns="False" CanUserAddRows="False" SelectionMode="Single">
             <DataGrid.Columns>
-                <DataGridTextColumn Header="ID" Binding="{Binding Id}" IsReadOnly="True" Width="60" />
+                <DataGridTextColumn Header="ID" Binding="{Binding Id, Mode=OneWay}" IsReadOnly="True" Width="60" />
                 <DataGridTextColumn Header="HSH" Binding="{Binding HSH, UpdateSourceTrigger=PropertyChanged, ValidatesOnExceptions=True}" Width="70" />
                 <DataGridTextColumn Header="VSL" Binding="{Binding VSL, UpdateSourceTrigger=PropertyChanged, ValidatesOnExceptions=True}" Width="70" />
                 <DataGridTextColumn Header="VAM" Binding="{Binding VAM, UpdateSourceTrigger=PropertyChanged, ValidatesOnExceptions=True}" Width="70" />
                 <DataGridTextColumn Header="VSC" Binding="{Binding VSC, UpdateSourceTrigger=PropertyChanged, ValidatesOnExceptions=True}" Width="70" />
                 <DataGridTextColumn Header="VSH" Binding="{Binding VSH, UpdateSourceTrigger=PropertyChanged, ValidatesOnExceptions=True}" Width="70" />
                 <DataGridTextColumn Header="Notes" Binding="{Binding Notes, UpdateSourceTrigger=PropertyChanged}" Width="*" />
-                <DataGridTextColumn Header="Calibration source" Binding="{Binding CalibrationSourceTitle}" Width="180" IsReadOnly="True" />
-                <DataGridTextColumn Header="Source ROM" Binding="{Binding CalibrationSourceRomName}" Width="100" IsReadOnly="True" />
-                <DataGridTextColumn Header="Games" Binding="{Binding AssignedGameCount}" Width="65" IsReadOnly="True" />
+                <DataGridTextColumn Header="Calibration source" Binding="{Binding CalibrationSourceTitle, Mode=OneWay}" Width="180" IsReadOnly="True" />
+                <DataGridTextColumn Header="Source ROM" Binding="{Binding CalibrationSourceRomName, Mode=OneWay}" Width="100" IsReadOnly="True" />
+                <DataGridTextColumn Header="Games" Binding="{Binding AssignedGameCount, Mode=OneWay}" Width="65" IsReadOnly="True" />
             </DataGrid.Columns>
         </DataGrid>
        </DockPanel>

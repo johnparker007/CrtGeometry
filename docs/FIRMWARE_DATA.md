@@ -75,8 +75,8 @@ counts, and offset overflow before atomically replacing the header.
 The MAME Description, never the ROM shortname, is the title source. Unicode is
 canonically decomposed, combining marks are removed (for example `é` becomes `E`),
 letters are upper-cased, smart apostrophes and Unicode dashes become ASCII, unsupported
-characters become spaces, and whitespace is collapsed and trimmed. Qualifiers are
-preserved rather than guessed away. Generated Nano-only names are capped at 40
+characters become spaces, and whitespace is collapsed and trimmed. Parenthesized
+qualifiers are removed for the Nano display only. Generated Nano-only names are capped at 40
 characters before packing; authoritative SQLite descriptions remain unchanged. A
 final post-cap collision pass adds a stable supported-character disambiguator derived
 from RomName while remaining within 40 characters. ROM names remain in the model but
@@ -93,31 +93,34 @@ The exact code-zero-through-code-63 alphabet is:
 
 Each character's alphabet index is written least-significant-bit first into one
 continuous six-bit stream. A name can therefore begin in the middle of a byte and
-symbols can cross byte boundaries. `GENERATED_GAME_NAME_BIT_OFFSETS` contains one
-`uint32_t` bit offset per game; a length is `(nextOffset-currentOffset)/6`, or
-`(GENERATED_TOTAL_NAME_BITS-currentOffset)/6` for the last game. There are no
-terminators, length bytes, or per-name padding. A 32-bit offset was selected
-intentionally: 16 bits hold only 10,922 characters and are insufficient for the
-required 1,500-game stress case. The checked 32-bit format represents over 715 million
-characters; game indexes/counts are checked `uint16_t`.
+symbols can cross byte boundaries. `GENERATED_GAME_NAME_SYMBOL_OFFSETS` contains one
+`uint16_t` six-bit-symbol index per game. Firmware multiplies it by six to obtain the
+bit offset; a length is the difference between adjacent symbol indexes (or the total
+bit count for the last game). There are no terminators, length bytes, or per-name
+padding. Generation fails clearly if the complete stream exceeds 65,535 symbols;
+this representation covers 49,152 packed bytes, beyond the Nano's flash capacity,
+without incorrectly assuming that non-byte-aligned bit offsets fit in 16 bits.
 
 ## PROGMEM layout and size
 
 The generated header contains the unchanged 1,280-byte direct profile table and
-32-byte validity bitmap, followed by the packed name bytes, four offset bytes per
+32-byte validity bitmap, followed by the packed name bytes, two offset bytes per
 game, one ProfileId byte per game, and a 27-entry/two-byte (54-byte) jump table.
 Thus the reported useful flash data is:
 
 ```text
 1280 + 32 + ceil(totalNameCharacters * 6 / 8)
-     + gameCount * 4 + gameCount + 54
+     + gameCount * 2 + gameCount + 54
 ```
 
 The committed database currently has six profiles but no eligible assigned game rows,
 so its useful generated-data total is **1,366 bytes**. The one-element placeholders
-used to keep empty C++ arrays portable add six physical bytes until games are generated.
-The Firmware tab reports each component, game/profile counts, average normalized name
-length, longest name, and total before writing.
+used to keep empty C++ arrays portable add four physical bytes until games are generated.
+The Firmware tab reports each component; effective-assignment, Nano-selection,
+Mahjong-exclusion, and generated counts; average normalized name length; longest name;
+and total before writing. Only explicitly Nano-selected games are emitted. Mahjong is
+matched as a case-insensitive standalone word in the desktop description and excluded
+from export without changing catalogue or assignment state.
 
 ## Jump table and Nano browser
 

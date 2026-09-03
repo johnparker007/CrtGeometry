@@ -5,6 +5,7 @@ namespace CrtGeometry.Core;
 public enum InclusionFilter { IncludedOnly, All, ExcludedOnly }
 public enum PresenceFilter { PresentOnly, All, AbsentOnly }
 public enum ProfileFilter { All, AssignedOnly, UnassignedOnly }
+public enum NanoInclusionFilter { All, IncludedOnNano, NotIncludedOnNano }
 
 public sealed class GameCatalogueQuery
 {
@@ -12,6 +13,7 @@ public sealed class GameCatalogueQuery
     public InclusionFilter Inclusion { get; init; } = InclusionFilter.IncludedOnly;
     public PresenceFilter Presence { get; init; } = PresenceFilter.PresentOnly;
     public ProfileFilter Profile { get; init; } = ProfileFilter.All;
+    public NanoInclusionFilter NanoInclusion { get; init; } = NanoInclusionFilter.All;
 }
 
 public sealed class GameCatalogueEntry
@@ -23,6 +25,7 @@ public sealed class GameCatalogueEntry
     public string? CloneOf { get; init; }
     public int? CoinInputs { get; init; }
     public bool IsIncluded { get; init; }
+    public bool IncludeOnNano { get; set; }
     public bool IsPresent { get; init; }
     public MameExclusionReason ExclusionReasons { get; init; }
     public int? ProfileId { get; init; }

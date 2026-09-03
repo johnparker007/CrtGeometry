@@ -1,5 +1,6 @@
 using System.Globalization;
 using System.Text;
+using System.Text.RegularExpressions;
 using CrtGeometry.Core;
 using Microsoft.Data.Sqlite;
 
@@ -7,12 +8,16 @@ namespace CrtGeometry.Data;
 
 public sealed record FirmwareGame(string RomName, string Description, int ProfileId);
 
-public sealed record GeneratedFirmwareGame(string RomName, string DisplayName, byte ProfileId, uint NameBitOffset);
+public sealed record GeneratedFirmwareGame(string RomName, string DisplayName, byte ProfileId, ushort NameSymbolOffset)
+{
+    public uint NameBitOffset => (uint)NameSymbolOffset * 6;
+}
 
 public sealed record FirmwareDatabaseStatistics(
     int ProfileCount, int HighestProfileId, int ProfileTableBytes, int ValidityBytes,
     int GameCount, int PackedNameBytes, int OffsetBytes, int MappingBytes, int JumpTableBytes,
-    int TotalNameBits, double AverageNameLength, int LongestNameLength, int TruncatedNameCount)
+    int TotalNameBits, double AverageNameLength, int LongestNameLength, int TruncatedNameCount,
+    int EffectiveAssignmentCount = 0, int NanoSelectedCount = 0, int ExcludedMahjongCount = 0)
 {
     public int TotalBytes => ProfileTableBytes + ValidityBytes + PackedNameBytes + OffsetBytes + MappingBytes + JumpTableBytes;
 }
@@ -32,7 +37,15 @@ public sealed class FirmwareDatabaseGenerator(string connectionString)
     public const int AlphabetGroupCount = 27; // #, A..Z
     public const int MaximumDisplayNameLength = 40;
 
-    public FirmwareDatabaseGeneration Preview() => Generate(LoadProfiles(), LoadEligibleGames());
+    public FirmwareDatabaseGeneration Preview()
+    {
+        var catalogue = LoadCatalogueStatistics();
+        var generated = Generate(LoadProfiles(), LoadEligibleGames());
+        return generated with { Statistics = generated.Statistics with {
+            EffectiveAssignmentCount = catalogue.EffectiveAssignments,
+            NanoSelectedCount = catalogue.NanoSelected,
+            ExcludedMahjongCount = catalogue.ExcludedMahjong } };
+    }
 
     public FirmwareDatabaseStatistics Write(string firmwareDirectory)
     {
@@ -68,7 +81,8 @@ public sealed class FirmwareDatabaseGenerator(string connectionString)
             ValidateGeometry(p.VAM, nameof(p.VAM), p.Id); ValidateGeometry(p.VSC, nameof(p.VSC), p.Id); ValidateGeometry(p.VSH, nameof(p.VSH), p.Id);
         }
 
-        var rawGames = gameSource.ToArray();
+        var suppliedGames = gameSource.ToArray();
+        var rawGames = suppliedGames.Where(game => !IsMahjongDescription(game.Description)).ToArray();
         if (rawGames.Length > ushort.MaxValue) throw new InvalidDataException("Generated game count exceeds uint16_t capacity.");
         var roms = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
         var normalized = new List<(FirmwareGame Game, string Name)>();
@@ -77,7 +91,7 @@ public sealed class FirmwareDatabaseGenerator(string connectionString)
             if (string.IsNullOrWhiteSpace(game.RomName) || !roms.Add(game.RomName)) throw new InvalidDataException($"Duplicate or empty ROM name '{game.RomName}'.");
             if (game.ProfileId is < 1 or > 255) throw new InvalidDataException($"Game {game.RomName} has invalid profile ID {game.ProfileId}.");
             if (!ids.Contains(game.ProfileId)) throw new InvalidDataException($"Game {game.RomName} references missing profile {game.ProfileId}.");
-            var name = NormalizeDisplayName(game.Description);
+            var name = NormalizeDisplayName(StripParenthesizedQualifiers(game.Description));
             if (name.Length == 0) throw new InvalidDataException($"Game {game.RomName} has no usable description.");
             normalized.Add((game, name));
         }
@@ -103,10 +117,11 @@ public sealed class FirmwareDatabaseGenerator(string connectionString)
             var displayName = postCapCollisions.Contains(item.Name)
                 ? AddCollisionSuffix(item.Name, item.Game.RomName)
                 : item.Name;
-            var bitOffset = checked((uint)(symbols.Count * 6L));
-            games.Add(new(item.Game.RomName, displayName, (byte)item.Game.ProfileId, bitOffset));
+            ValidateTotalNameSymbols(symbols.Count);
+            games.Add(new(item.Game.RomName, displayName, (byte)item.Game.ProfileId, checked((ushort)symbols.Count)));
             symbols.AddRange(displayName.Select(c => checked((byte)NameAlphabet.IndexOf(c))));
         }
+        ValidateTotalNameSymbols(symbols.Count);
         var totalBitsLong = symbols.Count * 6L;
         ValidateTotalNameBits(totalBitsLong);
         var totalBits = (uint)totalBitsLong;
@@ -116,9 +131,10 @@ public sealed class FirmwareDatabaseGenerator(string connectionString)
         var bitmap = new byte[ValidityByteCount]; foreach (var p in profiles) bitmap[p.Id >> 3] |= (byte)(1 << (p.Id & 7));
         var byId = profiles.ToDictionary(p => p.Id); var highest = profiles.Length == 0 ? 0 : profiles[^1].Id;
         var stats = new FirmwareDatabaseStatistics(profiles.Length, highest, 1280, 32, games.Count, packed.Length,
-            games.Count * sizeof(uint), games.Count, AlphabetGroupCount * sizeof(ushort), (int)totalBits,
+            games.Count * sizeof(ushort), games.Count, AlphabetGroupCount * sizeof(ushort), (int)totalBits,
             games.Count == 0 ? 0 : games.Average(g => g.DisplayName.Length), games.Count == 0 ? 0 : games.Max(g => g.DisplayName.Length),
-            capped.Count(x => x.OriginalName.Length > MaximumDisplayNameLength));
+            capped.Count(x => x.OriginalName.Length > MaximumDisplayNameLength),
+            ExcludedMahjongCount: suppliedGames.Length - rawGames.Length);
         return new(BuildHeader(byId, profiles.Length, highest, bitmap, games, packed, jumps, totalBits, stats), stats, games, packed, jumps);
     }
 
@@ -137,6 +153,18 @@ public sealed class FirmwareDatabaseGenerator(string connectionString)
         }
         return output.ToString().Trim();
     }
+
+    public static string StripParenthesizedQualifiers(string? value)
+    {
+        if (string.IsNullOrEmpty(value)) return value ?? string.Empty;
+        var result = value;
+        string previous;
+        do { previous = result; result = Regex.Replace(result, @"\([^()]*\)", " "); } while (result != previous);
+        return Regex.Replace(result, @"\s+", " ").Trim();
+    }
+
+    public static bool IsMahjongDescription(string? value) =>
+        !string.IsNullOrEmpty(value) && Regex.IsMatch(value, @"\bmahjong\b", RegexOptions.IgnoreCase | RegexOptions.CultureInvariant);
 
     public static string LimitDisplayName(string value)
     {
@@ -177,6 +205,13 @@ public sealed class FirmwareDatabaseGenerator(string connectionString)
             throw new InvalidDataException("Packed game-name offsets exceed uint32_t capacity.");
     }
 
+
+    public static void ValidateTotalNameSymbols(long totalSymbols)
+    {
+        if (totalSymbols is < 0 or > ushort.MaxValue)
+            throw new InvalidDataException("Packed game-name symbol offsets exceed uint16_t capacity (65,535 symbols).");
+    }
+
     public static string DecodeName(byte[] packed, uint offset, uint bitLength)
     {
         var result = new StringBuilder();
@@ -200,10 +235,40 @@ public sealed class FirmwareDatabaseGenerator(string connectionString)
     private IReadOnlyList<FirmwareGame> LoadEligibleGames()
     {
         using var connection = SqliteConnectionFactory.Open(connectionString); using var command = connection.CreateCommand();
-        command.CommandText = "SELECT m.RomName,m.Description,a.ProfileId FROM MameMachines m JOIN GameProfileAssignments a ON a.RomName=m.RomName WHERE m.IsPresent=1 AND m.IsIncluded=1 AND (m.CloneOf IS NULL OR trim(m.CloneOf)='') ORDER BY m.RomName";
+        command.CommandText = "SELECT m.RomName,m.Description,a.ProfileId FROM MameMachines m JOIN GameProfileAssignments a ON a.RomName=m.RomName WHERE m.IsPresent=1 AND m.IsIncluded=1 AND m.IncludeOnNano=1 AND (m.CloneOf IS NULL OR trim(m.CloneOf)='') ORDER BY m.RomName";
         var games = new List<FirmwareGame>(); using var reader = command.ExecuteReader();
-        while (reader.Read()) games.Add(new(reader.GetString(0), reader.IsDBNull(1) ? "" : reader.GetString(1), reader.GetInt32(2)));
+        while (reader.Read())
+        {
+            var description = reader.IsDBNull(1) ? "" : reader.GetString(1);
+            // Keep this check at the catalogue boundary as well as in Generate so every entry point is safe.
+            if (!IsMahjongDescription(description)) games.Add(new(reader.GetString(0), description, reader.GetInt32(2)));
+        }
         return games;
+    }
+
+
+    private (int EffectiveAssignments, int NanoSelected, int ExcludedMahjong) LoadCatalogueStatistics()
+    {
+        using var connection = SqliteConnectionFactory.Open(connectionString);
+        using var command = connection.CreateCommand();
+        command.CommandText = """
+            SELECT
+              SUM(CASE WHEN a.ProfileId IS NOT NULL AND m.IsPresent=1 AND m.IsIncluded=1 AND (m.CloneOf IS NULL OR trim(m.CloneOf)='') THEN 1 ELSE 0 END),
+              SUM(CASE WHEN m.IncludeOnNano=1 THEN 1 ELSE 0 END)
+            FROM MameMachines m LEFT JOIN GameProfileAssignments a ON a.RomName=m.RomName;
+            """;
+        int effective, selected;
+        using (var reader = command.ExecuteReader())
+        {
+            reader.Read();
+            effective = reader.IsDBNull(0) ? 0 : reader.GetInt32(0);
+            selected = reader.IsDBNull(1) ? 0 : reader.GetInt32(1);
+        }
+        // Count with the same authoritative boundary matcher rather than SQL substring semantics.
+        using var mahjong = connection.CreateCommand();
+        mahjong.CommandText = "SELECT m.Description FROM MameMachines m JOIN GameProfileAssignments a ON a.RomName=m.RomName WHERE m.IsPresent=1 AND m.IsIncluded=1 AND m.IncludeOnNano=1 AND (m.CloneOf IS NULL OR trim(m.CloneOf)='');";
+        var excluded = 0; using var names = mahjong.ExecuteReader(); while (names.Read()) if (IsMahjongDescription(names.IsDBNull(0) ? null : names.GetString(0))) excluded++;
+        return (effective, selected, excluded);
     }
 
     private static string BuildHeader(Dictionary<int, GeometryProfile> byId, int profileCount, int highest, byte[] bitmap,
@@ -220,7 +285,7 @@ public sealed class FirmwareDatabaseGenerator(string connectionString)
         t.Append("};\n\n");
         AppendArray(t,"uint8_t","GENERATED_PROFILE_VALIDITY",bitmap.Select(x=>$"0x{x:X2}"));
         AppendArray(t,"uint8_t","GENERATED_GAME_NAME_BITS",packed.Select(x=>$"0x{x:X2}"));
-        AppendArray(t,"uint32_t","GENERATED_GAME_NAME_BIT_OFFSETS",games.Select(x=>$"{x.NameBitOffset}UL"));
+        AppendArray(t,"uint16_t","GENERATED_GAME_NAME_SYMBOL_OFFSETS",games.Select(x=>x.NameSymbolOffset.ToString()));
         AppendArray(t,"uint8_t","GENERATED_GAME_PROFILE_IDS",games.Select(x=>x.ProfileId.ToString()));
         AppendArray(t,"uint16_t","GENERATED_ALPHABET_JUMPS",jumps.Select(x=>x.ToString()));
         t.Append("#endif\n"); return t.ToString();

@@ -2,6 +2,7 @@ using System.IO;
 using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Input;
+using CrtGeometry.Core;
 using CrtGeometry.Data;
 using Microsoft.Data.Sqlite;
 using Microsoft.Win32;
@@ -53,6 +54,17 @@ public partial class MainWindow : Window
         if (dialog.ShowDialog(this) == true) SetFirmwareDirectory(dialog.FolderName);
     }
 
+    private void GamesGrid_CellEditEnding(object sender, DataGridCellEditEndingEventArgs e)
+    {
+        if (e.Row.Item is not GameCatalogueEntry game || e.EditingElement is not CheckBox checkBox) return;
+        try { _gamesViewModel.SetIncludeOnNano(game, checkBox.IsChecked == true); }
+        catch (Exception exception)
+        {
+            e.Cancel = true;
+            MessageBox.Show(this, exception.Message, "Nano inclusion update failed", MessageBoxButton.OK, MessageBoxImage.Error);
+        }
+    }
+
     private void RefreshFirmware_Click(object sender, RoutedEventArgs e) => RefreshFirmwareStatistics();
 
     private void GenerateFirmware_Click(object sender, RoutedEventArgs e)
@@ -87,6 +99,9 @@ public partial class MainWindow : Window
         FirmwareTableBytes.Text = $"{statistics.ProfileTableBytes} bytes";
         FirmwareValidityBytes.Text = $"{statistics.ValidityBytes} bytes";
         FirmwareGameCount.Text = statistics.GameCount.ToString();
+        FirmwareAssignedGameCount.Text = statistics.EffectiveAssignmentCount.ToString();
+        FirmwareNanoSelectedCount.Text = statistics.NanoSelectedCount.ToString();
+        FirmwareMahjongExcludedCount.Text = statistics.ExcludedMahjongCount.ToString();
         FirmwareNameBytes.Text = $"{statistics.PackedNameBytes} bytes";
         FirmwareOffsetBytes.Text = $"{statistics.OffsetBytes} bytes";
         FirmwareMappingBytes.Text = $"{statistics.MappingBytes} bytes";

@@ -14,6 +14,7 @@ public sealed class GamesViewModel : INotifyPropertyChanged
     private InclusionFilter _inclusion = InclusionFilter.IncludedOnly;
     private PresenceFilter _presence = PresenceFilter.PresentOnly;
     private ProfileFilter _profile = ProfileFilter.All;
+    private NanoInclusionFilter _nanoInclusion = NanoInclusionFilter.All;
     private GameCatalogueEntry? _selectedGame;
     private IReadOnlyList<GameCatalogueEntry> _games = [];
     private CancellationTokenSource? _refreshCancellation;
@@ -29,11 +30,13 @@ public sealed class GamesViewModel : INotifyPropertyChanged
     public Array InclusionOptions => Enum.GetValues<InclusionFilter>();
     public Array PresenceOptions => Enum.GetValues<PresenceFilter>();
     public Array ProfileOptions => Enum.GetValues<ProfileFilter>();
+    public Array NanoInclusionOptions => Enum.GetValues<NanoInclusionFilter>();
     public string ResultSummary => $"{Games.Count:N0} machine{(Games.Count == 1 ? "" : "s")}";
     public string SearchText { get=>_searchText; set { if(Set(ref _searchText,value)) Schedule(); } }
     public InclusionFilter Inclusion { get=>_inclusion; set { if(Set(ref _inclusion,value)) Schedule(); } }
     public PresenceFilter Presence { get=>_presence; set { if(Set(ref _presence,value)) Schedule(); } }
     public ProfileFilter Profile { get=>_profile; set { if(Set(ref _profile,value)) Schedule(); } }
+    public NanoInclusionFilter NanoInclusion { get=>_nanoInclusion; set { if(Set(ref _nanoInclusion,value)) Schedule(); } }
     public GameCatalogueEntry? SelectedGame { get=>_selectedGame; set=>Set(ref _selectedGame,value); }
     public string? SelectedRomName => SelectedGame?.RomName;
 
@@ -42,13 +45,19 @@ public sealed class GamesViewModel : INotifyPropertyChanged
         _refreshCancellation?.Cancel();
         var cancellation = new CancellationTokenSource();
         _refreshCancellation = cancellation;
-        var query = new GameCatalogueQuery { SearchText=SearchText, Inclusion=Inclusion, Presence=Presence, Profile=Profile };
+        var query = new GameCatalogueQuery { SearchText=SearchText, Inclusion=Inclusion, Presence=Presence, Profile=Profile, NanoInclusion=NanoInclusion };
         IReadOnlyList<GameCatalogueEntry> results;
         try { results = await _repository.SearchAsync(query, cancellation.Token); }
         catch (OperationCanceledException) { return; }
         if (_refreshCancellation != cancellation) return;
         Games = results;
         if (SelectedGame is not null) SelectedGame = results.FirstOrDefault(x => x.RomName == SelectedGame.RomName);
+    }
+
+    public void SetIncludeOnNano(GameCatalogueEntry game, bool included)
+    {
+        _repository.SetIncludeOnNano(game.RomName, included);
+        game.IncludeOnNano = included;
     }
 
     private void Schedule() { _searchDelay.Stop(); _searchDelay.Start(); }

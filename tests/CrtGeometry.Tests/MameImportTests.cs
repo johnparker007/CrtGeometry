@@ -91,6 +91,22 @@ public sealed class MameImportTests : IDisposable
     }
 
     [Fact]
+    public void IncludeOnNanoDefaultsFalseAndSurvivesReimportAndReload()
+    {
+        var service = new MameImportService(_connectionString);
+        service.Import(Bytes(Xml("Original")));
+        var repository = new GameCatalogueRepository(_connectionString);
+        Assert.False(Assert.Single(repository.Search(new())).IncludeOnNano);
+
+        repository.SetIncludeOnNano("test", true);
+        Assert.True(Assert.Single(new GameCatalogueRepository(_connectionString).Search(new())).IncludeOnNano);
+        service.Import(Bytes(Xml("Updated")));
+        var reloaded = Assert.Single(new GameCatalogueRepository(_connectionString).Search(new()));
+        Assert.True(reloaded.IncludeOnNano);
+        Assert.Equal("Updated", reloaded.Description);
+    }
+
+    [Fact]
     public void VersionOneMigratesWithoutChangingProfilesAndNewerVersionIsRejected()
     {
         SqliteConnection.ClearAllPools();
@@ -103,7 +119,7 @@ public sealed class MameImportTests : IDisposable
         }
         new DatabaseInitializer(_connectionString).Initialize();
         Assert.Equal("keep", new GeometryProfileRepository(_connectionString).GetAll().Single().Notes);
-        using (var c = Open()) { using var cmd = c.CreateCommand(); cmd.CommandText = "PRAGMA user_version=4;"; cmd.ExecuteNonQuery(); }
+        using (var c = Open()) { using var cmd = c.CreateCommand(); cmd.CommandText = "PRAGMA user_version=5;"; cmd.ExecuteNonQuery(); }
         Assert.Throws<InvalidOperationException>(() => new DatabaseInitializer(_connectionString).Initialize());
     }
 

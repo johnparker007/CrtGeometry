@@ -23,7 +23,7 @@ public sealed class GeometryProfileRepositoryTests : IDisposable
         connection.Open();
         using var command = connection.CreateCommand();
         command.CommandText = "PRAGMA user_version;";
-        Assert.Equal(1L, command.ExecuteScalar());
+        Assert.Equal(2L, command.ExecuteScalar());
     }
 
     [Fact]

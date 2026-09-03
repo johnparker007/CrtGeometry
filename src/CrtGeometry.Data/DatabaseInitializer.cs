@@ -4,6 +4,7 @@ namespace CrtGeometry.Data;
 
 public sealed class DatabaseInitializer(string connectionString)
 {
+    public const int CurrentVersion = 2;
     public void Initialize()
     {
         using var connection = new SqliteConnection(connectionString);
@@ -19,10 +20,68 @@ public sealed class DatabaseInitializer(string connectionString)
             version = 1;
         }
 
-        if (version > 1)
+        if (version < 2)
+        {
+            ApplyVersion2(connection);
+            version = 2;
+        }
+
+        if (version > CurrentVersion)
         {
             throw new InvalidOperationException($"Database version {version} is newer than this application supports.");
         }
+    }
+
+    private static void ApplyVersion2(SqliteConnection connection)
+    {
+        using var transaction = connection.BeginTransaction();
+        using var command = connection.CreateCommand();
+        command.Transaction = transaction;
+        command.CommandText = """
+            CREATE TABLE MameImports (
+                Id INTEGER PRIMARY KEY AUTOINCREMENT,
+                Build TEXT NULL,
+                Debug TEXT NULL,
+                MameConfig TEXT NULL,
+                SourceFileName TEXT NULL,
+                ImportedAtUtc TEXT NOT NULL,
+                DurationMilliseconds INTEGER NOT NULL,
+                TotalMachines INTEGER NOT NULL,
+                IncludedMachines INTEGER NOT NULL,
+                MachinesWithDisplays INTEGER NOT NULL
+            );
+            CREATE TABLE MameMachines (
+                RomName TEXT PRIMARY KEY,
+                Description TEXT NULL,
+                Year TEXT NULL,
+                Manufacturer TEXT NULL,
+                CloneOf TEXT NULL,
+                Runnable INTEGER NOT NULL,
+                IsBios INTEGER NOT NULL,
+                IsDevice INTEGER NOT NULL,
+                IsMechanical INTEGER NOT NULL,
+                CoinInputs INTEGER NULL,
+                ExclusionReasons INTEGER NOT NULL,
+                IsIncluded INTEGER NOT NULL,
+                LastImportId INTEGER NOT NULL REFERENCES MameImports(Id),
+                IsPresent INTEGER NOT NULL DEFAULT 1
+            );
+            CREATE TABLE MameDisplays (
+                Id INTEGER PRIMARY KEY AUTOINCREMENT,
+                RomName TEXT NOT NULL REFERENCES MameMachines(RomName) ON DELETE CASCADE,
+                DisplayIndex INTEGER NOT NULL,
+                Type TEXT NULL, Width INTEGER NULL, Height INTEGER NULL, Rotate INTEGER NULL,
+                Refresh REAL NULL, PixelClock INTEGER NULL,
+                HTotal INTEGER NULL, HBEnd INTEGER NULL, HBStart INTEGER NULL,
+                VTotal INTEGER NULL, VBEnd INTEGER NULL, VBStart INTEGER NULL,
+                RawAttributesJson TEXT NOT NULL,
+                UNIQUE (RomName, DisplayIndex)
+            );
+            CREATE INDEX IX_MameMachines_Included ON MameMachines(IsIncluded, IsPresent);
+            PRAGMA user_version = 2;
+            """;
+        command.ExecuteNonQuery();
+        transaction.Commit();
     }
 
     private static void ApplyVersion1(SqliteConnection connection)

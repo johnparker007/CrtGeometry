@@ -135,6 +135,52 @@ public sealed class FirmwareDatabaseGeneratorTests : IDisposable
         Assert.Equal(result.Games[0].DisplayName.Length * 6U, result.Games[1].NameBitOffset);
     }
 
+    [Theory]
+    [InlineData("A", 1)]
+    [InlineData("ABCDEFGHIJKLMNOPQRST", 20)]
+    [InlineData("ABCDEFGHIJKLMNOPQRSTU", 21)]
+    [InlineData("1234567890123456789012345678901234567890", 40)]
+    public void DisplayNamesThroughFortyCharactersArePreserved(string name, int expectedLength)
+    {
+        var result = FirmwareDatabaseGenerator.Generate([Profile(1, 1, 2, 3, 4, 5)], [new("rom", name, 1)]);
+        Assert.Equal(expectedLength, result.Games[0].DisplayName.Length);
+        Assert.Equal(name, result.Games[0].DisplayName);
+    }
+
+    [Fact]
+    public void LongNamesAreDeterministicallyCappedAndPackedNamesRoundTrip()
+    {
+        const string title = "A VERY LONG TITLE THAT CONTINUES WELL PAST FORTY CHARACTERS";
+        var first = FirmwareDatabaseGenerator.Generate([Profile(1, 1, 2, 3, 4, 5)], [new("long", title, 1)]);
+        var second = FirmwareDatabaseGenerator.Generate([Profile(1, 1, 2, 3, 4, 5)], [new("long", title, 1)]);
+        var game = Assert.Single(first.Games);
+        Assert.InRange(game.DisplayName.Length, 1, FirmwareDatabaseGenerator.MaximumDisplayNameLength);
+        Assert.Equal(game.DisplayName, Assert.Single(second.Games).DisplayName);
+        Assert.Equal(1, first.Statistics.TruncatedNameCount);
+        Assert.Equal(game.DisplayName, FirmwareDatabaseGenerator.DecodeName(first.PackedNames, 0, (uint)game.DisplayName.Length * 6));
+    }
+
+    [Fact]
+    public void CollisionsIntroducedByFortyCharacterCapReceiveStableRomDisambiguators()
+    {
+        const string prefix = "SOME LONG ARCADE GAME TITLE WITH SHARED PREFIX";
+        var source = new[] { new FirmwareGame("variant_a", prefix + " ALPHA", 1), new("variant_b", prefix + " BETA", 1) };
+        var first = FirmwareDatabaseGenerator.Generate([Profile(1, 1, 2, 3, 4, 5)], source);
+        var reversed = FirmwareDatabaseGenerator.Generate([Profile(1, 1, 2, 3, 4, 5)], source.Reverse());
+        Assert.Equal(2, first.Games.Select(game => game.DisplayName).Distinct(StringComparer.Ordinal).Count());
+        Assert.All(first.Games, game => Assert.InRange(game.DisplayName.Length, 1, 40));
+        Assert.Equal(first.Content, reversed.Content);
+    }
+
+    [Fact]
+    public void NoGeneratedNameCanExceedTwoLcdRows()
+    {
+        var games = Enumerable.Range(0, 50).Select(i => new FirmwareGame($"rom{i}", new string((char)('A' + i % 26), 100) + i, 1));
+        var result = FirmwareDatabaseGenerator.Generate([Profile(1, 1, 2, 3, 4, 5)], games);
+        Assert.All(result.Games, game => Assert.True(game.DisplayName.Length <= 40));
+        Assert.True(result.Statistics.LongestNameLength <= 40);
+    }
+
     [Fact]
     public void CollisionsAreVisibleAndOrderingIsDeterministic()
     {

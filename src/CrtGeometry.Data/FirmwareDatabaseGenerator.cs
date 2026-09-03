@@ -12,7 +12,7 @@ public sealed record GeneratedFirmwareGame(string RomName, string DisplayName, b
 public sealed record FirmwareDatabaseStatistics(
     int ProfileCount, int HighestProfileId, int ProfileTableBytes, int ValidityBytes,
     int GameCount, int PackedNameBytes, int OffsetBytes, int MappingBytes, int JumpTableBytes,
-    int TotalNameBits, double AverageNameLength, int LongestNameLength)
+    int TotalNameBits, double AverageNameLength, int LongestNameLength, int TruncatedNameCount)
 {
     public int TotalBytes => ProfileTableBytes + ValidityBytes + PackedNameBytes + OffsetBytes + MappingBytes + JumpTableBytes;
 }
@@ -30,6 +30,7 @@ public sealed class FirmwareDatabaseGenerator(string connectionString)
     public const int ValidityByteCount = ProfileSlotCount / 8;
     public const string NameAlphabet = " ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789-/.\'&+:!?,()[]*=_%#@$<>;^~|";
     public const int AlphabetGroupCount = 27; // #, A..Z
+    public const int MaximumDisplayNameLength = 40;
 
     public FirmwareDatabaseGeneration Preview() => Generate(LoadProfiles(), LoadEligibleGames());
 
@@ -78,7 +79,6 @@ public sealed class FirmwareDatabaseGenerator(string connectionString)
             if (!ids.Contains(game.ProfileId)) throw new InvalidDataException($"Game {game.RomName} references missing profile {game.ProfileId}.");
             var name = NormalizeDisplayName(game.Description);
             if (name.Length == 0) throw new InvalidDataException($"Game {game.RomName} has no usable description.");
-            if (name.Length > ushort.MaxValue) throw new InvalidDataException($"Game {game.RomName} name exceeds uint16_t decoder length capacity.");
             normalized.Add((game, name));
         }
         var collisions = normalized.GroupBy(x => x.Name, StringComparer.Ordinal).Where(g => g.Count() > 1)
@@ -90,11 +90,18 @@ public sealed class FirmwareDatabaseGenerator(string connectionString)
         var ordered = normalized.OrderBy(x => x.Name[0] is >= 'A' and <= 'Z' ? x.Name[0] - 'A' + 1 : 0)
             .ThenBy(x => x.Name, StringComparer.Ordinal).ThenBy(x => x.Game.RomName, StringComparer.Ordinal).ToArray();
 
+        var collisionExpanded = ordered.Select(item => (item.Game, Name: collisions.Contains(item.Name)
+            ? $"{item.Name} [{NormalizeDisplayName(item.Game.RomName)}]"
+            : item.Name)).ToArray();
+        var capped = collisionExpanded.Select(item => (item.Game, OriginalName: item.Name, Name: LimitDisplayName(item.Name))).ToArray();
+        var postCapCollisions = capped.GroupBy(x => x.Name, StringComparer.Ordinal)
+            .Where(group => group.Count() > 1).Select(group => group.Key).ToHashSet(StringComparer.Ordinal);
+
         var symbols = new List<byte>(); var games = new List<GeneratedFirmwareGame>(ordered.Length);
-        foreach (var item in ordered)
+        foreach (var item in capped)
         {
-            var displayName = collisions.Contains(item.Name)
-                ? $"{item.Name} [{NormalizeDisplayName(item.Game.RomName)}]"
+            var displayName = postCapCollisions.Contains(item.Name)
+                ? AddCollisionSuffix(item.Name, item.Game.RomName)
                 : item.Name;
             var bitOffset = checked((uint)(symbols.Count * 6L));
             games.Add(new(item.Game.RomName, displayName, (byte)item.Game.ProfileId, bitOffset));
@@ -110,7 +117,8 @@ public sealed class FirmwareDatabaseGenerator(string connectionString)
         var byId = profiles.ToDictionary(p => p.Id); var highest = profiles.Length == 0 ? 0 : profiles[^1].Id;
         var stats = new FirmwareDatabaseStatistics(profiles.Length, highest, 1280, 32, games.Count, packed.Length,
             games.Count * sizeof(uint), games.Count, AlphabetGroupCount * sizeof(ushort), (int)totalBits,
-            games.Count == 0 ? 0 : games.Average(g => g.DisplayName.Length), games.Count == 0 ? 0 : games.Max(g => g.DisplayName.Length));
+            games.Count == 0 ? 0 : games.Average(g => g.DisplayName.Length), games.Count == 0 ? 0 : games.Max(g => g.DisplayName.Length),
+            capped.Count(x => x.OriginalName.Length > MaximumDisplayNameLength));
         return new(BuildHeader(byId, profiles.Length, highest, bitmap, games, packed, jumps, totalBits, stats), stats, games, packed, jumps);
     }
 
@@ -128,6 +136,27 @@ public sealed class FirmwareDatabaseGenerator(string connectionString)
             output.Append(c);
         }
         return output.ToString().Trim();
+    }
+
+    public static string LimitDisplayName(string value)
+    {
+        ArgumentNullException.ThrowIfNull(value);
+        if (value.Length <= MaximumDisplayNameLength) return value.TrimEnd();
+        var candidate = value[..MaximumDisplayNameLength].TrimEnd();
+        var boundary = candidate.LastIndexOf(' ');
+        // Keep a sensible word boundary when it does not throw away more than a quarter of the LCD.
+        return boundary >= 30 ? candidate[..boundary].TrimEnd() : candidate;
+    }
+
+    private static string AddCollisionSuffix(string name, string romName)
+    {
+        // FNV-1a is stable across runtimes and input order; eight hexadecimal characters fit the 6-bit alphabet.
+        uint hash = 2166136261;
+        foreach (var value in Encoding.UTF8.GetBytes(romName.ToUpperInvariant()))
+            hash = unchecked((hash ^ value) * 16777619);
+        var suffix = $" [{hash:X8}]";
+        var prefix = name[..Math.Min(name.Length, MaximumDisplayNameLength - suffix.Length)].TrimEnd();
+        return prefix + suffix;
     }
 
     public static byte[] PackSymbols(IEnumerable<byte> source)

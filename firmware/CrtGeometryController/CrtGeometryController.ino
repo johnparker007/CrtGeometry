@@ -4,7 +4,7 @@
 
     Arduino Nano / ATmega328P
     HD44780 20x4 LCD
-    3 rotary encoders
+    2 rotary encoders
     ST M24C16W EEPROM
 
     Memory optimised:
@@ -20,17 +20,15 @@
 
       Encoder 1 turn: jump #/A-Z group
       Encoder 2 turn: browse within group
-      Encoder 3 turn: horizontally scroll long title
-
-      Any encoder click:
-        Load selected profile into editable working geometry
+      Either click: apply selected game's generated geometry
+      Either hold: enter manual geometry editing
 
     GEOMETRY EDITOR
 
-      Encoder 2 turn:
+      Encoder 1 turn:
         Select HSH/VSL/VAM/VSC/VSH
 
-      Encoder 3 turn:
+      Encoder 2 turn:
         Adjust selected parameter
 
       ANY encoder click:
@@ -122,6 +120,8 @@ const int8_t ROTARY_TRANSITIONS_PER_DETENT = 4;
 
 const unsigned long BUTTON_DEBOUNCE_MS = 30;
 const unsigned long BACK_HOLD_MS       = 800;
+const unsigned long BACKLIGHT_IDLE_TIMEOUT_MS  = 30000;
+const unsigned long BACKLIGHT_APPLY_TIMEOUT_MS = 5000;
 
 
 // ============================================================
@@ -136,20 +136,18 @@ LiquidCrystal lcd(12, 11, 5, 4, 3, 2);
 // ENCODER PINS
 // ============================================================
 
-// Encoder 1 - main navigation
+// Encoder 1 - alphabet group / manual parameter
 const uint8_t ENC1_CLK = A3;
 const uint8_t ENC1_DT  = 10;
 const uint8_t ENC1_SW  = 9;
 
-// Encoder 2 - parameter selection
+// Encoder 2 - game / manual value
 const uint8_t ENC2_CLK = 8;
 const uint8_t ENC2_DT  = 7;
 const uint8_t ENC2_SW  = 6;
 
-// Encoder 3 - geometry adjustment
-const uint8_t ENC3_CLK = A0;
-const uint8_t ENC3_DT  = A1;
-const uint8_t ENC3_SW  = A2;
+// A0, A1, A2 and D13 are currently free. They are deliberately unassigned
+// until the bus-switch, IR, and transistor-driven backlight circuits are final.
 
 
 // ============================================================
@@ -215,7 +213,6 @@ MenuLevel menuLevel = MENU_GAME_BROWSER;
 uint8_t selectedProfileId = 0;
 uint16_t selectedGameIndex = 0;
 uint8_t selectedAlphabetGroup = 0;
-uint16_t gameNameScroll = 0;
 
 Geometry currentGeometry = { 33, 11, 30, 13, 63 };
 GeometryParameter selectedParameter = PARAM_HSH;
@@ -257,7 +254,13 @@ struct RotaryData
 
 RotaryData encoder1;
 RotaryData encoder2;
-RotaryData encoder3;
+
+// Logical state is complete even though the committed hardware has no safe
+// GPIO-controlled backlight connection yet.
+bool backlightEnabled = true;
+bool applySuccessTimeoutActive = false;
+unsigned long lastUserActivityTime = 0;
+unsigned long applySuccessTime = 0;
 
 /*
     Arduino's sketch preprocessor inserts function prototypes near
@@ -330,22 +333,11 @@ char generatedNameCharacter(uint32_t bitOffset)
     return (char)pgm_read_byte(&GENERATED_NAME_ALPHABET[symbol]);
 }
 
-void decodeGeneratedGameName(uint16_t index, char* output, uint8_t capacity)
+void decodeGeneratedGameNameLine(uint16_t index, uint8_t rowOffset, char* output)
 {
-    if (capacity == 0) return;
     uint16_t length = generatedGameNameLength(index);
-    uint32_t bit = generatedGameNameBitOffset(index);
-    uint8_t count = length < capacity - 1 ? length : capacity - 1;
-    for (uint8_t i = 0; i < count; ++i, bit += 6) output[i] = generatedNameCharacter(bit);
-    output[count] = '\0';
-}
-
-void decodeGeneratedGameNameWindow(uint16_t index, uint16_t start, char* output, uint8_t capacity)
-{
-    if (capacity == 0) return;
-    uint16_t length = generatedGameNameLength(index);
-    if (start >= length) start = 0;
-    uint8_t count = length - start < capacity - 1 ? length - start : capacity - 1;
+    uint8_t start = rowOffset * 20;
+    uint8_t count = length > start ? min((uint16_t)20, (uint16_t)(length - start)) : 0;
     uint32_t bit = generatedGameNameBitOffset(index) + (uint32_t)start * 6;
     for (uint8_t i = 0; i < count; ++i, bit += 6) output[i] = generatedNameCharacter(bit);
     output[count] = '\0';
@@ -391,6 +383,61 @@ uint8_t clampGeometryValue(int value)
         return 63;
 
     return (uint8_t)value;
+}
+
+// ============================================================
+// BACKLIGHT MANAGEMENT
+// ============================================================
+
+void setBacklight(bool enabled)
+{
+    if (backlightEnabled == enabled) return;
+    backlightEnabled = enabled;
+
+    // Hardware pending: the LCD LED remains separately powered in the
+    // committed build. A future assigned Nano GPIO must drive an external
+    // transistor/MOSFET control input here, never the full LED current.
+#if DEBUG_LOGGING
+    Serial.println(enabled ? F("Backlight state: ON") : F("Backlight state: OFF"));
+#endif
+}
+
+void noteUserActivity()
+{
+    lastUserActivityTime = millis();
+    applySuccessTimeoutActive = false;
+    setBacklight(true);
+}
+
+void noteSuccessfulApply()
+{
+    applySuccessTime = millis();
+    applySuccessTimeoutActive = true;
+    setBacklight(true);
+}
+
+// Manual DPDT operation remains authoritative. These no-ops isolate the future
+// electronic bus switch / IR reload integration without changing tested I2C code.
+void prepareForNvramWrite() { }
+void finishNvramWrite() { }
+void forceTvGeometryReload() { }
+
+void updateBacklight()
+{
+    unsigned long now = millis();
+    if (applySuccessTimeoutActive)
+    {
+        if ((unsigned long)(now - applySuccessTime) >= BACKLIGHT_APPLY_TIMEOUT_MS)
+        {
+            applySuccessTimeoutActive = false;
+            setBacklight(false);
+        }
+    }
+    else if (backlightEnabled &&
+             (unsigned long)(now - lastUserActivityTime) >= BACKLIGHT_IDLE_TIMEOUT_MS)
+    {
+        setBacklight(false);
+    }
 }
 
 
@@ -507,7 +554,9 @@ void selectAlphabetGroup(int8_t movement)
         if (start < GENERATED_GAME_COUNT && start < alphabetGroupEnd(selectedAlphabetGroup))
         {
             selectedGameIndex = start;
-            gameNameScroll = 0;
+#if DEBUG_LOGGING
+            Serial.print(F("Alphabet group: ")); Serial.println(selectedAlphabetGroup == 0 ? '#' : 'A' + selectedAlphabetGroup - 1);
+#endif
             renderUI();
             return;
         }
@@ -517,14 +566,15 @@ void selectAlphabetGroup(int8_t movement)
 void moveGame(int16_t movement)
 {
     if (GENERATED_GAME_COUNT == 0) return;
+    uint16_t start = alphabetGroupStart(selectedAlphabetGroup);
+    uint16_t end = alphabetGroupEnd(selectedAlphabetGroup);
     int32_t next = (int32_t)selectedGameIndex + movement;
-    if (next < 0) next = 0;
-    if (next >= GENERATED_GAME_COUNT) next = GENERATED_GAME_COUNT - 1;
+    if (next < start) next = end - 1;
+    if (next >= end) next = start;
     selectedGameIndex = (uint16_t)next;
-    gameNameScroll = 0;
-    for (uint8_t group = 0; group < 27; ++group)
-        if (alphabetGroupStart(group) <= selectedGameIndex && selectedGameIndex < alphabetGroupEnd(group))
-            selectedAlphabetGroup = group;
+#if DEBUG_LOGGING
+    Serial.print(F("Game selection: ")); Serial.println(selectedGameIndex);
+#endif
     renderUI();
 }
 
@@ -549,19 +599,23 @@ void renderGameBrowser()
         lcdPrintLineF(0, F("No assigned games")); lcdPrintLineF(1, F("Generate database"));
         lcdPrintLineF(2, F("from desktop app")); lcdPrintLineF(3, F("")); return;
     }
-    char line[41];
+    char line[21];
     char group = selectedAlphabetGroup == 0 ? '#' : 'A' + selectedAlphabetGroup - 1;
-    snprintf(line, sizeof(line), "Group %c  Game %u/%u", group, selectedGameIndex + 1, GENERATED_GAME_COUNT);
+    uint16_t groupStart = alphabetGroupStart(selectedAlphabetGroup);
+    uint16_t groupCount = alphabetGroupEnd(selectedAlphabetGroup) - groupStart;
+    char position[14];
+    snprintf(position, sizeof(position), "%u/%u", selectedGameIndex - groupStart + 1, groupCount);
+    snprintf(line, sizeof(line), "%c%*s", group, 19, position);
     lcdPrintLine(0, line);
-    decodeGeneratedGameNameWindow(selectedGameIndex, gameNameScroll, line, 21); lcdPrintLine(1, line);
-    snprintf(line, sizeof(line), "Profile %03u", generatedGameProfileId(selectedGameIndex)); lcdPrintLine(2, line);
-    lcdPrintLineF(3, F("E1=ABC E2=GAME E3=>"));
+    decodeGeneratedGameNameLine(selectedGameIndex, 0, line); lcdPrintLine(1, line);
+    decodeGeneratedGameNameLine(selectedGameIndex, 1, line); lcdPrintLine(2, line);
+    lcdPrintLineF(3, F("CLICK=APPLY HOLD=EDT"));
 }
 
 void renderGeometryEditor()
 {
-    char line[41]; decodeGeneratedGameName(selectedGameIndex, line, sizeof(line)); lcdPrintLine(0, line);
-    snprintf(line, sizeof(line), "P%03u Click=WRITE", selectedProfileId); lcdPrintLine(1, line);
+    lcdPrintLineF(0, F("MANUAL CLICK=WRITE"));
+    lcdPrintLineF(1, F("HOLD=BACK"));
     printGeometryRows(true);
 }
 
@@ -1092,10 +1146,6 @@ bool writeCurrentGeometry()
             F(""));
 
 
-        delay(1500);
-
-        renderUI();
-
         return false;
     }
 
@@ -1290,10 +1340,6 @@ bool writeCurrentGeometry()
         F("Then reload AV"));
 
 
-    delay(1500);
-
-    renderUI();
-
     return true;
 
 
@@ -1323,10 +1369,6 @@ writeFailed:
         F(""));
 
 
-    delay(2000);
-
-    renderUI();
-
     return false;
 
 
@@ -1355,10 +1397,6 @@ verifyFailed:
         3,
         F(""));
 
-
-    delay(2000);
-
-    renderUI();
 
     return false;
 }
@@ -1681,22 +1719,62 @@ void handleClick()
     if (menuLevel == MENU_GAME_BROWSER)
     {
         uint8_t profileId = generatedGameProfileId(selectedGameIndex);
-        if (profileId != 0 && loadGeneratedProfile(profileId, currentGeometry))
+#if DEBUG_LOGGING
+        Serial.print(F("Apply game index ")); Serial.print(selectedGameIndex);
+        Serial.print(F(" profile ")); Serial.println(profileId);
+#endif
+        if (profileId == 0 || !loadGeneratedProfile(profileId, currentGeometry))
         {
-            selectedProfileId = profileId;
-            menuLevel = MENU_GEOMETRY;
-            renderUI();
+            lcdPrintLineF(0, F("APPLY FAILED"));
+            lcdPrintLineF(1, F("Profile unavailable"));
+            lcdPrintLineF(2, F("Selection unchanged"));
+            lcdPrintLineF(3, F("Check generated data"));
+            return;
         }
+        selectedProfileId = profileId;
+        prepareForNvramWrite();
+        bool success = writeCurrentGeometry();
+        finishNvramWrite();
+        if (success)
+        {
+            forceTvGeometryReload();
+            noteSuccessfulApply();
+        }
+        // Failure deliberately retains the ordinary 30-second activity timeout.
     }
-    else writeCurrentGeometry();
+    else
+    {
+        prepareForNvramWrite();
+        bool success = writeCurrentGeometry();
+        finishNvramWrite();
+        if (success) noteSuccessfulApply();
+    }
 }
 
 void handleLongPress()
 {
-    if (menuLevel == MENU_GEOMETRY)
+    uint8_t profileId = generatedGameProfileId(selectedGameIndex);
+    if (menuLevel == MENU_GAME_BROWSER)
     {
+        if (profileId != 0 && loadGeneratedProfile(profileId, currentGeometry))
+        {
+            selectedProfileId = profileId;
+            selectedParameter = PARAM_HSH;
+            menuLevel = MENU_GEOMETRY;
+#if DEBUG_LOGGING
+            Serial.println(F("Enter manual geometry"));
+#endif
+            renderUI();
+        }
+    }
+    else
+    {
+        loadGeneratedProfile(profileId, currentGeometry);
+        selectedProfileId = profileId;
         menuLevel = MENU_GAME_BROWSER;
-        loadGeneratedProfile(generatedGameProfileId(selectedGameIndex), currentGeometry);
+#if DEBUG_LOGGING
+        Serial.println(F("Exit manual geometry; generated profile restored"));
+#endif
         renderUI();
     }
 }
@@ -1707,170 +1785,51 @@ void handleLongPress()
 
 void updateEncoders()
 {
-    // --------------------------------------------------------
-    // Encoder 1
-    // Generated profile browsing
-    // --------------------------------------------------------
+    int8_t movement1 = updateRotaryRotation(encoder1);
+    int8_t movement2 = updateRotaryRotation(encoder2);
+    ButtonEvent button1 = updateRotaryButton(encoder1);
+    ButtonEvent button2 = updateRotaryButton(encoder2);
+    bool hasInput = movement1 != 0 || movement2 != 0 ||
+        button1 != BUTTON_NONE || button2 != BUTTON_NONE;
 
-    int8_t movement1 =
-        updateRotaryRotation(
-            encoder1);
+    if (!hasInput) return;
 
-
-    if (movement1 != 0)
+    // The first complete turn/click/hold event while logically dark is wake-only.
+    if (!backlightEnabled)
     {
-        if (menuLevel == MENU_GAME_BROWSER)
-            selectAlphabetGroup(movement1);
-    }
-
-
-    // --------------------------------------------------------
-    // Encoder 2
-    // Parameter selection
-    // --------------------------------------------------------
-
-    int8_t movement2 =
-        updateRotaryRotation(
-            encoder2);
-
-
-    if (movement2 != 0 && menuLevel == MENU_GAME_BROWSER)
-    {
-        moveGame(movement2);
-    }
-    else if (movement2 != 0 &&
-        menuLevel == MENU_GEOMETRY)
-    {
-        int next =
-            (int)selectedParameter +
-            movement2;
-
-
-        if (next < 0)
-            next =
-                PARAM_COUNT - 1;
-
-
-        if (next >= PARAM_COUNT)
-            next = 0;
-
-
-        selectedParameter =
-            (GeometryParameter)next;
-
-
-#if DEBUG_LOGGING
-
-        Serial.print(
-            F("Selected parameter: "));
-
-
-        switch (selectedParameter)
-        {
-            case PARAM_HSH:
-                Serial.println(F("HSH"));
-                break;
-
-            case PARAM_VSL:
-                Serial.println(F("VSL"));
-                break;
-
-            case PARAM_VAM:
-                Serial.println(F("VAM"));
-                break;
-
-            case PARAM_VSC:
-                Serial.println(F("VSC"));
-                break;
-
-            case PARAM_VSH:
-                Serial.println(F("VSH"));
-                break;
-
-            default:
-                break;
-        }
-
-#endif
-
-
+        noteUserActivity();
         renderUI();
+        return;
     }
+    noteUserActivity();
 
-
-    // --------------------------------------------------------
-    // Encoder 3
-    // Geometry adjustment
-    // --------------------------------------------------------
-
-    int8_t movement3 =
-        updateRotaryRotation(
-            encoder3);
-
-
-    if (movement3 != 0 && menuLevel == MENU_GAME_BROWSER)
-    {
-        uint16_t length = generatedGameNameLength(selectedGameIndex);
-        int32_t next = (int32_t)gameNameScroll + movement3;
-        uint16_t maximum = length > 20 ? length - 20 : 0;
-        if (next < 0) next = 0;
-        if (next > maximum) next = maximum;
-        gameNameScroll = (uint16_t)next;
-        renderUI();
-    }
-    else if (movement3 != 0 &&
-        menuLevel == MENU_GEOMETRY)
-    {
-        adjustSelectedParameter(
-            movement3);
-    }
-
-
-    // --------------------------------------------------------
-    // Buttons
-    //
-    // All three buttons have identical meaning:
-    //
-    // click = enter editor OR write geometry
-    // hold  = return to profile selector
-    // --------------------------------------------------------
-
-    ButtonEvent button1 =
-        updateRotaryButton(
-            encoder1);
-
-    ButtonEvent button2 =
-        updateRotaryButton(
-            encoder2);
-
-    ButtonEvent button3 =
-        updateRotaryButton(
-            encoder3);
-
-
-    /*
-        Process long holds first.
-
-        If two buttons somehow generate events simultaneously,
-        BACK has priority over WRITE.
-    */
-
-    if (button1 == BUTTON_LONG_PRESS ||
-        button2 == BUTTON_LONG_PRESS ||
-        button3 == BUTTON_LONG_PRESS)
+    if (button1 == BUTTON_LONG_PRESS || button2 == BUTTON_LONG_PRESS)
     {
         handleLongPress();
-
+        return;
+    }
+    if (button1 == BUTTON_CLICK || button2 == BUTTON_CLICK)
+    {
+        handleClick();
         return;
     }
 
-
-    if (button1 == BUTTON_CLICK ||
-        button2 == BUTTON_CLICK ||
-        button3 == BUTTON_CLICK)
+    if (menuLevel == MENU_GAME_BROWSER)
     {
-        handleClick();
+        if (movement1 != 0) selectAlphabetGroup(movement1);
+        if (movement2 != 0) moveGame(movement2);
+        return;
     }
+
+    if (movement1 != 0)
+    {
+        int next = (int)selectedParameter + movement1;
+        if (next < 0) next = PARAM_COUNT - 1;
+        if (next >= PARAM_COUNT) next = 0;
+        selectedParameter = (GeometryParameter)next;
+        renderUI();
+    }
+    if (movement2 != 0) adjustSelectedParameter(movement2);
 }
 
 
@@ -1933,13 +1892,6 @@ void setup()
         ENC2_SW);
 
 
-    setupRotary(
-        encoder3,
-        ENC3_CLK,
-        ENC3_DT,
-        ENC3_SW);
-
-
     Wire.begin();
 
 
@@ -1969,16 +1921,13 @@ void setup()
         F(" E1 turn  = alphabet group"));
 
     Serial.println(
-        F(" E2 turn  = geometry parameter"));
+        F(" E2 turn  = game/value"));
 
     Serial.println(
-        F(" E3 turn  = geometry value"));
+        F(" Any click = apply/write"));
 
     Serial.println(
-        F(" Any click = edit/write"));
-
-    Serial.println(
-        F(" Any hold  = game browser"));
+        F(" Any hold  = edit/back"));
 
     Serial.println();
 
@@ -1993,4 +1942,5 @@ void setup()
 void loop()
 {
     updateEncoders();
+    updateBacklight();
 }

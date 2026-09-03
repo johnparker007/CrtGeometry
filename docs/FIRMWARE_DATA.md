@@ -76,9 +76,10 @@ The MAME Description, never the ROM shortname, is the title source. Unicode is
 canonically decomposed, combining marks are removed (for example `é` becomes `E`),
 letters are upper-cased, smart apostrophes and Unicode dashes become ASCII, unsupported
 characters become spaces, and whitespace is collapsed and trimmed. Qualifiers are
-preserved rather than guessed away. Names are not truncated to the LCD width. If two
-normalized descriptions collide, every colliding entry receives a visible, stable
-` [NORMALIZED-ROMNAME]` suffix. ROM names remain in the desktop generation model but
+preserved rather than guessed away. Generated Nano-only names are capped at 40
+characters before packing; authoritative SQLite descriptions remain unchanged. A
+final post-cap collision pass adds a stable supported-character disambiguator derived
+from RomName while remaining within 40 characters. ROM names remain in the model but
 are not emitted to the Nano. Entries sort by group (`#`, then A--Z), normalized name,
 and ordinal ROM name, so generation is deterministic and the Nano performs no sort.
 
@@ -122,18 +123,44 @@ length, longest name, and total before writing.
 
 `GENERATED_ALPHABET_JUMPS` has 27 `uint16_t` entries: `#`, then A through Z. Each is
 the first sorted game index in that group, or `GENERATED_GAME_COUNT` when empty. The
-Nano reads it directly from flash. Encoder 1 jumps among non-empty groups, encoder 2
-moves one game, and encoder 3 deliberately scrolls the current title horizontally so
-long titles and collision suffixes can always be revealed. A click
-validates and loads the selected game's one-byte ProfileId and copies its five-byte
-profile to mutable `currentGeometry`; selection never writes NVRAM. In the editor,
-encoder 2 selects a geometry field, encoder 3 edits it, any click writes, and any long
-hold returns to the browser. Reselecting reloads immutable generated values.
+Nano reads it directly from flash. Encoder 1 jumps among non-empty groups, and encoder
+2 wraps only among games in that group. Either short click resolves the internal
+ProfileId, loads the generated geometry, and writes/verifies in one action. ProfileId
+and geometry are hidden in browser mode. Either hold enters manual mode; there E1
+selects a field, E2 edits, either click writes, and either hold restores the generated
+profile and returns.
 
-Only the currently shown title is decoded from PROGMEM into a 41-byte fixed buffer.
-The complete database is never copied to the Nano's 2 KB SRAM. Titles longer than 20
-characters remain stored; encoder 3 moves the displayed 20-character window without
-flicker or automatic timing.
+Exactly one selected title is shown. Characters 0--19 are decoded from PROGMEM into a
+21-byte row buffer for LCD row 2, then characters 20--39 separately for row 3. Unused
+cells are cleared, so short titles leave row 3 blank. Horizontal scrolling and the
+permanent 41-byte title buffer have been removed.
+
+## Nano pin allocation and backlight hardware
+
+```text
+LCD:       D12 RS, D11 E, D5 D4, D4 D5, D3 D6, D2 D7
+I2C:       A4 SDA, A5 SCL
+Encoder 1: A3 CLK, D10 DT, D9 SW
+Encoder 2: D8 CLK, D7 DT, D6 SW
+Free:      A0, A1, A2, D13
+```
+
+The free pins are deliberately not assigned to bus switching, IR, or backlight until
+those circuits are finalized. The manual DPDT remains authoritative and the future
+bus/reload abstraction points are no-ops.
+
+Backlight state uses wrap-safe `millis()` timing independently of menus: 30 seconds
+ordinary inactivity, 5 seconds after successful Apply, and the ordinary timeout after
+failure. A first event while logically dark is consumed only to wake. No safe switched
+backlight GPIO exists in the committed hardware, so physical blanking awaits:
+
+```text
+Nano GPIO -> transistor/MOSFET control -> LCD backlight
+```
+
+The existing LCD current limiting remains unchanged; the full backlight current must
+not be driven directly by an ATmega328P GPIO. A finalized pin belongs only inside
+`setBacklight(bool)`. PWM dimming is not implemented.
 
 ## Physical manual acceptance (not performed by automated tests)
 
@@ -141,12 +168,18 @@ Compile first and record `Sketch uses _____ bytes` of flash and `Global variable
 _____ bytes` of SRAM, comparing both with Phase 6; flash should grow with game data
 while SRAM should change only by the small title buffer/state. On the Nano/LCD verify:
 
-1. Boot opens the game browser with uncorrupted text.
-2. Group jump, one-game browsing, title scrolling, and all encoders remain reliable;
-   finding R-Type is practical.
-3. R-Type loads HSH 33, VSL 11, VAM 30, VSC 13, VSH 63 without writing immediately.
-4. Edit a value, hold Back, and reselect; the generated value must be restored.
-5. With the DPDT switched to Nano, click Write; return the bus to the TV and force a
-   source/channel reload, then verify the expected geometry.
-6. If two generated games share a profile, verify both load identical geometry.
-7. Report whether navigation remains practical at hundreds of games.
+1. **Browser:** confirm exactly one title is shown, E1 changes non-empty alphabet
+   groups, E2 stays within the group, and the candidate is always unambiguous.
+2. **Apply:** select R-Type, switch the DPDT to Nano, and click either encoder once.
+   Confirm that one click writes/verifies, no Enter click is needed, and R-Type remains
+   selected when the browser is next rendered. Return the bus to TV and reload AV.
+3. **Manual:** hold either encoder on R-Type, use E1 to select each geometry parameter,
+   use E2 to edit, and click either button to write. Hold either button to return and
+   confirm the generated R-Type values were restored.
+4. **Backlight state:** because switched hardware is not yet committed, enable debug
+   logging and verify logical OFF after 30 seconds, wake-only first movement/click,
+   ordinary action on the next event, successful-Apply OFF after 5 seconds, and no
+   NVRAM write from a dark-state wake click. Repeat physical light checks after the
+   transistor/MOSFET stage is wired.
+5. **Memory:** report `Sketch uses _____ bytes` flash and
+   `Global variables use _____ bytes` SRAM from the Arduino compile output.

@@ -201,36 +201,6 @@ struct RawGeometry
 
 
 // ============================================================
-// GENERATED PROFILE DATABASE
-// ============================================================
-
-bool generatedProfileExists(uint8_t profileId)
-{
-    if (profileId == 0)
-        return false;
-
-    uint8_t validityByte = (uint8_t)pgm_read_byte(
-        &GENERATED_PROFILE_VALIDITY[profileId >> 3]);
-
-    return (validityByte & (uint8_t)(1U << (profileId & 7))) != 0;
-}
-
-bool loadGeneratedProfile(uint8_t profileId, Geometry& result)
-{
-    if (!generatedProfileExists(profileId))
-        return false;
-
-    GeneratedGeometryProfile generated;
-    memcpy_P(&generated, &GENERATED_PROFILES[profileId], sizeof(generated));
-    result.hsh = generated.hsh;
-    result.vsl = generated.vsl;
-    result.vam = generated.vam;
-    result.vsc = generated.vsc;
-    result.vsh = generated.vsh;
-    return true;
-}
-
-// ============================================================
 // MENU STATE / WORKING GEOMETRY
 // ============================================================
 
@@ -285,6 +255,47 @@ RotaryData encoder1;
 RotaryData encoder2;
 RotaryData encoder3;
 
+/*
+    Arduino's sketch preprocessor inserts function prototypes near
+    the first function definition. Keep explicit declarations for
+    functions that use sketch-defined rotary types so generated
+    prototypes can never appear before RotaryData/ButtonEvent.
+*/
+uint8_t readRotaryAB(const RotaryData& rotary);
+void setupRotary(RotaryData& rotary, uint8_t pinCLK, uint8_t pinDT, uint8_t pinSW);
+int8_t updateRotaryRotation(RotaryData& rotary);
+ButtonEvent updateRotaryButton(RotaryData& rotary);
+
+
+// ============================================================
+// GENERATED PROFILE DATABASE
+// ============================================================
+
+bool generatedProfileExists(uint8_t profileId)
+{
+    if (profileId == 0)
+        return false;
+
+    uint8_t validityByte = (uint8_t)pgm_read_byte(
+        &GENERATED_PROFILE_VALIDITY[profileId >> 3]);
+
+    return (validityByte & (uint8_t)(1U << (profileId & 7))) != 0;
+}
+
+bool loadGeneratedProfile(uint8_t profileId, Geometry& result)
+{
+    if (!generatedProfileExists(profileId))
+        return false;
+
+    GeneratedGeometryProfile generated;
+    memcpy_P(&generated, &GENERATED_PROFILES[profileId], sizeof(generated));
+    result.hsh = generated.hsh;
+    result.vsl = generated.vsl;
+    result.vam = generated.vam;
+    result.vsc = generated.vsc;
+    result.vsh = generated.vsh;
+    return true;
+}
 
 // ============================================================
 // QUADRATURE DECODER TABLE

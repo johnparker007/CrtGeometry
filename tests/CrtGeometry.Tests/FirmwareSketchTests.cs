@@ -2,8 +2,11 @@ namespace CrtGeometry.Tests;
 
 public sealed class FirmwareSketchTests
 {
+    // Git may check the sketch out with CRLF on Windows. Normalize it before
+    // making the deliberately line-oriented structural assertions below.
     private static readonly string Sketch = File.ReadAllText(FindRepositoryFile(
-        "firmware", "CrtGeometryController", "CrtGeometryController.ino"));
+        "firmware", "CrtGeometryController", "CrtGeometryController.ino"))
+        .ReplaceLineEndings("\n");
 
     [Fact]
     public void UsesTwoEncodersAndKeepsGameMovementInsideSelectedGroup()

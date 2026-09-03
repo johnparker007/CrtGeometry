@@ -83,19 +83,22 @@ public sealed class FirmwareDatabaseGenerator(string connectionString)
         }
         var collisions = normalized.GroupBy(x => x.Name, StringComparer.Ordinal).Where(g => g.Count() > 1)
             .Select(g => g.Key).ToHashSet(StringComparer.Ordinal);
-        for (var index = 0; index < normalized.Count; index++)
-            if (collisions.Contains(normalized[index].Name))
-                normalized[index] = (normalized[index].Game,
-                    $"{normalized[index].Name} [{NormalizeDisplayName(normalized[index].Game.RomName)}]");
+        // Sort by the normalized MAME description and use RomName only as the
+        // deterministic secondary key.  Collision suffixes are presentation data;
+        // allowing them to participate in sorting would invert prefix ROM names
+        // (for example, DKONGB sorts before DKONG because 'B' precedes ']').
         var ordered = normalized.OrderBy(x => x.Name[0] is >= 'A' and <= 'Z' ? x.Name[0] - 'A' + 1 : 0)
             .ThenBy(x => x.Name, StringComparer.Ordinal).ThenBy(x => x.Game.RomName, StringComparer.Ordinal).ToArray();
 
         var symbols = new List<byte>(); var games = new List<GeneratedFirmwareGame>(ordered.Length);
         foreach (var item in ordered)
         {
+            var displayName = collisions.Contains(item.Name)
+                ? $"{item.Name} [{NormalizeDisplayName(item.Game.RomName)}]"
+                : item.Name;
             var bitOffset = checked((uint)(symbols.Count * 6L));
-            games.Add(new(item.Game.RomName, item.Name, (byte)item.Game.ProfileId, bitOffset));
-            symbols.AddRange(item.Name.Select(c => checked((byte)NameAlphabet.IndexOf(c))));
+            games.Add(new(item.Game.RomName, displayName, (byte)item.Game.ProfileId, bitOffset));
+            symbols.AddRange(displayName.Select(c => checked((byte)NameAlphabet.IndexOf(c))));
         }
         var totalBitsLong = symbols.Count * 6L;
         ValidateTotalNameBits(totalBitsLong);

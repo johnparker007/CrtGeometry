@@ -4,7 +4,7 @@ namespace CrtGeometry.Data;
 
 public sealed class DatabaseInitializer(string connectionString)
 {
-    public const int CurrentVersion = 2;
+    public const int CurrentVersion = 3;
     public void Initialize()
     {
         using var connection = new SqliteConnection(connectionString);
@@ -26,10 +26,53 @@ public sealed class DatabaseInitializer(string connectionString)
             version = 2;
         }
 
+        if (version < 3)
+        {
+            ApplyVersion3(connection);
+            version = 3;
+        }
+
         if (version > CurrentVersion)
         {
             throw new InvalidOperationException($"Database version {version} is newer than this application supports.");
         }
+    }
+
+    private static void ApplyVersion3(SqliteConnection connection)
+    {
+        using var transaction = connection.BeginTransaction();
+        using var command = connection.CreateCommand();
+        command.Transaction = transaction;
+        command.CommandText = """
+            CREATE TABLE CalibrationRecords (
+                Id INTEGER PRIMARY KEY AUTOINCREMENT,
+                ProfileId INTEGER NOT NULL REFERENCES GeometryProfiles(Id) ON DELETE RESTRICT,
+                SourceRomName TEXT NOT NULL REFERENCES MameMachines(RomName) ON DELETE RESTRICT,
+                Width INTEGER NOT NULL, Height INTEGER NOT NULL, Rotation INTEGER NOT NULL,
+                RefreshMicroHz INTEGER NOT NULL,
+                CreatedAtUtc TEXT NOT NULL
+            );
+            CREATE TABLE VideoProfileMappings (
+                Width INTEGER NOT NULL, Height INTEGER NOT NULL, Rotation INTEGER NOT NULL,
+                RefreshMicroHz INTEGER NOT NULL,
+                ProfileId INTEGER NOT NULL REFERENCES GeometryProfiles(Id) ON DELETE RESTRICT,
+                CalibrationId INTEGER NOT NULL REFERENCES CalibrationRecords(Id) ON DELETE RESTRICT,
+                PRIMARY KEY (Width, Height, Rotation, RefreshMicroHz)
+            );
+            CREATE TABLE GameProfileAssignments (
+                RomName TEXT PRIMARY KEY REFERENCES MameMachines(RomName) ON DELETE RESTRICT,
+                ProfileId INTEGER NOT NULL REFERENCES GeometryProfiles(Id) ON DELETE RESTRICT,
+                AssignmentType INTEGER NOT NULL CHECK (AssignmentType IN (1,2)),
+                Width INTEGER NULL, Height INTEGER NULL, Rotation INTEGER NULL, RefreshMicroHz INTEGER NULL,
+                UpdatedAtUtc TEXT NOT NULL,
+                CHECK (AssignmentType=2 OR (Width IS NOT NULL AND Height IS NOT NULL AND Rotation IS NOT NULL AND RefreshMicroHz IS NOT NULL))
+            );
+            CREATE INDEX IX_GameProfileAssignments_Profile ON GameProfileAssignments(ProfileId);
+            CREATE INDEX IX_GameProfileAssignments_Signature ON GameProfileAssignments(Width,Height,Rotation,RefreshMicroHz);
+            PRAGMA user_version = 3;
+            """;
+        command.ExecuteNonQuery();
+        transaction.Commit();
     }
 
     private static void ApplyVersion2(SqliteConnection connection)

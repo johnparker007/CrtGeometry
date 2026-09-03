@@ -20,6 +20,9 @@ public sealed class GeometryProfile
     public int VSC { get => _vsc; set => _vsc = Validate(value, nameof(VSC)); }
     public int VSH { get => _vsh; set => _vsh = Validate(value, nameof(VSH)); }
     public string? Notes { get; set; }
+    public string? CalibrationSourceRomName { get; set; }
+    public string? CalibrationSourceTitle { get; set; }
+    public int AssignedGameCount { get; set; }
 
     private static int ValidateId(int value)
     {

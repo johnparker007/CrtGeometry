@@ -11,6 +11,8 @@ public partial class MainWindow : Window
     private readonly ProfilesViewModel _viewModel;
     private readonly string _connectionString;
     private readonly GamesViewModel _gamesViewModel;
+    private readonly CalibrationViewModel _calibrationViewModel;
+    private readonly CalibrationRepository _calibrationRepository;
 
     public MainWindow()
     {
@@ -27,7 +29,34 @@ public partial class MainWindow : Window
         DataContext = _viewModel;
         _gamesViewModel = new GamesViewModel(new GameCatalogueRepository(_connectionString));
         GamesPanel.DataContext = _gamesViewModel;
+        _calibrationRepository = new CalibrationRepository(_connectionString);
+        _calibrationViewModel = new CalibrationViewModel(new GameCatalogueRepository(_connectionString), _calibrationRepository);
+        CalibrationPanel.DataContext = _calibrationViewModel;
         Loaded += async (_, _) => await _gamesViewModel.RefreshAsync();
+    }
+
+    private async void PreviewCalibration_Click(object sender, RoutedEventArgs e)
+    { try { await _calibrationViewModel.PreviewAsync(); } catch(Exception ex) { MessageBox.Show(this,ex.Message,"Cannot preview"); } }
+    private async void ApplyCalibration_Click(object sender, RoutedEventArgs e)
+    {
+        try { await _calibrationViewModel.ApplyAsync(); await _gamesViewModel.RefreshAsync(); ReloadProfiles(); }
+        catch(Exception ex) { MessageBox.Show(this,ex.Message,"Cannot apply calibration"); }
+    }
+    private async void ManualAssign_Click(object sender, RoutedEventArgs e)
+    {
+        if(_gamesViewModel.SelectedGame is null || !int.TryParse(ManualProfileId.Text,out var id)) return;
+        try { await Task.Run(()=>_calibrationRepository.AssignManual(_gamesViewModel.SelectedGame.RomName,id)); await _gamesViewModel.RefreshAsync(); ReloadProfiles(); }
+        catch(Exception ex) { MessageBox.Show(this,ex.Message,"Cannot assign profile"); }
+    }
+    private async void ResetOverride_Click(object sender, RoutedEventArgs e)
+    {
+        if(_gamesViewModel.SelectedGame is null) return;
+        try { await Task.Run(()=>_calibrationRepository.RemoveManualOverride(_gamesViewModel.SelectedGame.RomName)); await _gamesViewModel.RefreshAsync(); ReloadProfiles(); }
+        catch(Exception ex) { MessageBox.Show(this,ex.Message,"Cannot reset override"); }
+    }
+    private void ReloadProfiles()
+    {
+        _viewModel.Reload();
     }
 
     private async void Import_Click(object sender, RoutedEventArgs e)
@@ -75,7 +104,8 @@ public partial class MainWindow : Window
         if (MessageBox.Show(this, $"Delete profile {_viewModel.SelectedProfile.Id}?", "Delete profile",
                 MessageBoxButton.YesNo, MessageBoxImage.Warning) == MessageBoxResult.Yes)
         {
-            _viewModel.DeleteSelected();
+            try { _viewModel.DeleteSelected(); }
+            catch (SqliteException) { MessageBox.Show(this, "This profile is used by games or calibration history and cannot be deleted.", "Profile in use"); }
         }
     }
 }

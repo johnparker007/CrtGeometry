@@ -13,8 +13,7 @@ public sealed class GameCatalogueRepository(string connectionString)
 
     private IReadOnlyList<GameCatalogueEntry> Search(GameCatalogueQuery query, CancellationToken cancellationToken)
     {
-        using var connection = new SqliteConnection(connectionString);
-        connection.Open();
+        using var connection = SqliteConnectionFactory.Open(connectionString);
         using var command = connection.CreateCommand();
         var conditions = new List<string>();
         if (query.Inclusion == InclusionFilter.IncludedOnly) conditions.Add("m.IsIncluded=1");

@@ -7,8 +7,7 @@ public sealed class DatabaseInitializer(string connectionString)
     public const int CurrentVersion = 3;
     public void Initialize()
     {
-        using var connection = new SqliteConnection(connectionString);
-        connection.Open();
+        using var connection = SqliteConnectionFactory.Open(connectionString);
 
         using var versionCommand = connection.CreateCommand();
         versionCommand.CommandText = "PRAGMA user_version;";

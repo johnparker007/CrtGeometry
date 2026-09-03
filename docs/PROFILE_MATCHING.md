@@ -57,4 +57,6 @@ absent, and automatic propagation considers only currently present, included gam
 
 Profile deletion is blocked by SQLite foreign keys while any assignment,
 calibration, or active signature mapping references it. Remove those references
-before deleting the profile.
+before deleting the profile. `SqliteConnectionFactory` enables foreign-key
+enforcement in every production and test connection; repositories do not rely on
+callers remembering a connection-local PRAGMA.

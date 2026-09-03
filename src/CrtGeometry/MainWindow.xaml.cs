@@ -22,7 +22,8 @@ public partial class MainWindow : Window
         Directory.CreateDirectory(dataDirectory);
         _connectionString = new SqliteConnectionStringBuilder
         {
-            DataSource = Path.Combine(dataDirectory, "profiles.db")
+            DataSource = Path.Combine(dataDirectory, "profiles.db"),
+            ForeignKeys = true
         }.ToString();
         new DatabaseInitializer(_connectionString).Initialize();
         _viewModel = new ProfilesViewModel(new GeometryProfileRepository(_connectionString));
@@ -101,11 +102,12 @@ public partial class MainWindow : Window
     private void Delete_Click(object sender, RoutedEventArgs e)
     {
         if (_viewModel.SelectedProfile is null) return;
-        if (MessageBox.Show(this, $"Delete profile {_viewModel.SelectedProfile.Id}?", "Delete profile",
+        var profileId = _viewModel.SelectedProfile.Id;
+        if (MessageBox.Show(this, $"Delete profile {profileId}?", "Delete profile",
                 MessageBoxButton.YesNo, MessageBoxImage.Warning) == MessageBoxResult.Yes)
         {
             try { _viewModel.DeleteSelected(); }
-            catch (SqliteException) { MessageBox.Show(this, "This profile is used by games or calibration history and cannot be deleted.", "Profile in use"); }
+            catch (SqliteException) { MessageBox.Show(this, $"Profile {profileId} is currently assigned or referenced and cannot be deleted.", "Profile in use"); }
         }
     }
 }

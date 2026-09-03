@@ -123,6 +123,6 @@ public sealed class MameImportTests : IDisposable
 
     private static string Xml(string description) => $"<mame build='0.139'><game name='test'><description>{description}</description><display type='raster' width='320' height='240' rotate='0' refresh='60.0'/><input coins='1'/></game></mame>";
     private static MemoryStream Bytes(string value) => new(Encoding.UTF8.GetBytes(value));
-    private SqliteConnection Open() { var c = new SqliteConnection(_connectionString); c.Open(); return c; }
+    private SqliteConnection Open() => SqliteConnectionFactory.Open(_connectionString);
     public void Dispose() { SqliteConnection.ClearAllPools(); File.Delete(_path); }
 }

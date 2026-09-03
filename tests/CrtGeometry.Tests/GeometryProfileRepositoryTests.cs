@@ -19,8 +19,7 @@ public sealed class GeometryProfileRepositoryTests : IDisposable
     public void InitializeCreatesCurrentSchemaAndCanRunAgain()
     {
         new DatabaseInitializer(_connectionString).Initialize();
-        using var connection = new SqliteConnection(_connectionString);
-        connection.Open();
+        using var connection = SqliteConnectionFactory.Open(_connectionString);
         using var command = connection.CreateCommand();
         command.CommandText = "PRAGMA user_version;";
         Assert.Equal(3L, command.ExecuteScalar());
@@ -53,8 +52,7 @@ public sealed class GeometryProfileRepositoryTests : IDisposable
     [InlineData(256)]
     public void DatabaseRejectsInvalidProfileIds(int id)
     {
-        using var connection = new SqliteConnection(_connectionString);
-        connection.Open();
+        using var connection = SqliteConnectionFactory.Open(_connectionString);
         using var command = connection.CreateCommand();
         command.CommandText = """
             INSERT INTO GeometryProfiles (Id, HSH, VSL, VAM, VSC, VSH)

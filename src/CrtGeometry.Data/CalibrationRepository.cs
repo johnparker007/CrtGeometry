@@ -118,8 +118,6 @@ public sealed class CalibrationRepository(string connectionString, VideoSignatur
     { c.Parameters.AddWithValue("$w",s.Width); c.Parameters.AddWithValue("$h",s.Height); c.Parameters.AddWithValue("$r",s.Rotation); c.Parameters.AddWithValue("$f",s.RefreshMicroHz); }
     private SqliteConnection Open()
     {
-        var c=new SqliteConnection(connectionString); c.Open();
-        using var command=c.CreateCommand(); command.CommandText="PRAGMA foreign_keys=ON;"; command.ExecuteNonQuery();
-        return c;
+        return SqliteConnectionFactory.Open(connectionString);
     }
 }

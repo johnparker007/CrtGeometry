@@ -13,7 +13,7 @@ public sealed class ProfileMatchingTests : IDisposable
     {
         _cs=new SqliteConnectionStringBuilder{DataSource=_path}.ToString(); new DatabaseInitializer(_cs).Initialize();
         new MameImportService(_cs).Import(Xml(Catalogue),"matching.xml");
-        using var connection=new SqliteConnection(_cs); connection.Open(); using var command=connection.CreateCommand();
+        using var connection=SqliteConnectionFactory.Open(_cs); using var command=connection.CreateCommand();
         command.CommandText="UPDATE MameMachines SET IsPresent=0 WHERE RomName='absent';"; command.ExecuteNonQuery();
     }
 
@@ -79,6 +79,42 @@ public sealed class ProfileMatchingTests : IDisposable
         var source=new GameCatalogueRepository(_cs).Search(new(){SearchText="source"}).Single(); Assert.NotNull(source.ProfileId);
         var profile=new GeometryProfileRepository(_cs).GetAll().Single();
         Assert.Equal("source",profile.CalibrationSourceRomName); Assert.Equal("Updated Source Game",profile.CalibrationSourceTitle);
+    }
+
+    [Fact]
+    public void ProductionConnectionFactoryEnforcesForeignKeysAndBlocksReferencedProfileDeletion()
+    {
+        using(var connection=SqliteConnectionFactory.Open(_cs))
+        { using var command=connection.CreateCommand(); command.CommandText="PRAGMA foreign_keys;"; Assert.Equal(1L,command.ExecuteScalar()); }
+        var repository=new CalibrationRepository(_cs); var values=new CalibrationValues(1,2,3,4,5);
+        var profileId=repository.Apply(repository.Preview("source",values),values);
+
+        Assert.Throws<SqliteException>(()=>new GeometryProfileRepository(_cs).Delete(profileId));
+        Assert.Contains(new GameCatalogueRepository(_cs).Search(new()),game=>game.ProfileId==profileId);
+    }
+
+    [Fact]
+    public void ManualAssignmentRejectsNonexistentProfileAndRom()
+    {
+        var repository=new CalibrationRepository(_cs);
+        Assert.Throws<SqliteException>(()=>repository.AssignManual("source",254));
+
+        new GeometryProfileRepository(_cs).Save(new GeometryProfile(7));
+        Assert.Throws<SqliteException>(()=>repository.AssignManual("not-a-real-rom",7));
+        Assert.Empty(new GameCatalogueRepository(_cs).Search(new(){Profile=ProfileFilter.AssignedOnly}));
+    }
+
+    [Fact]
+    public void InvalidCalibrationSourceRollsBackProfileAndCalibrationAtomically()
+    {
+        var repository=new CalibrationRepository(_cs);
+        var invalid=new PropagationPreview("not-a-real-rom",Signature(320,240,0,60),1,false,[]);
+
+        Assert.Throws<SqliteException>(()=>repository.Apply(invalid,new(1,2,3,4,5)));
+        Assert.Empty(new GeometryProfileRepository(_cs).GetAll());
+        using var connection=SqliteConnectionFactory.Open(_cs); using var command=connection.CreateCommand();
+        command.CommandText="SELECT (SELECT COUNT(*) FROM CalibrationRecords) + (SELECT COUNT(*) FROM VideoProfileMappings);";
+        Assert.Equal(0L,command.ExecuteScalar());
     }
 
     private VideoSignature Signature(int w,int h,int r,double refresh)=>new VideoSignatureService().SelectPrimary([Display(w,h,r,refresh)]).Signature!.Value;

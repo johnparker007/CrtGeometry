@@ -63,9 +63,6 @@ public sealed class GeometryProfileRepository(string connectionString)
 
     private SqliteConnection OpenConnection()
     {
-        var connection = new SqliteConnection(connectionString);
-        connection.Open();
-        using var command = connection.CreateCommand(); command.CommandText = "PRAGMA foreign_keys=ON;"; command.ExecuteNonQuery();
-        return connection;
+        return SqliteConnectionFactory.Open(connectionString);
     }
 }

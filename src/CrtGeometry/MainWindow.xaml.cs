@@ -1,5 +1,7 @@
 using System.IO;
 using System.Windows;
+using System.Windows.Controls;
+using System.Windows.Input;
 using CrtGeometry.Data;
 using Microsoft.Data.Sqlite;
 using Microsoft.Win32;
@@ -84,6 +86,13 @@ public partial class MainWindow : Window
         FirmwareHighestId.Text = statistics.HighestProfileId.ToString();
         FirmwareTableBytes.Text = $"{statistics.ProfileTableBytes} bytes";
         FirmwareValidityBytes.Text = $"{statistics.ValidityBytes} bytes";
+        FirmwareGameCount.Text = statistics.GameCount.ToString();
+        FirmwareNameBytes.Text = $"{statistics.PackedNameBytes} bytes";
+        FirmwareOffsetBytes.Text = $"{statistics.OffsetBytes} bytes";
+        FirmwareMappingBytes.Text = $"{statistics.MappingBytes} bytes";
+        FirmwareJumpBytes.Text = $"{statistics.JumpTableBytes} bytes";
+        FirmwareAverageName.Text = $"{statistics.AverageNameLength:0.0} chars";
+        FirmwareLongestName.Text = $"{statistics.LongestNameLength} chars";
         FirmwareTotalBytes.Text = $"{statistics.TotalBytes} bytes";
     }
 
@@ -144,6 +153,10 @@ public partial class MainWindow : Window
     {
         try { await _calibrationViewModel.ApplyAsync(); await _gamesViewModel.RefreshAsync(); ReloadProfiles(); }
         catch(Exception ex) { MessageBox.Show(this,ex.Message,"Cannot apply calibration"); }
+    }
+    private void GeometryTextBox_GotKeyboardFocus(object sender, KeyboardFocusChangedEventArgs e)
+    {
+        if (sender is TextBox textBox) textBox.SelectAll();
     }
     private async void ManualAssign_Click(object sender, RoutedEventArgs e)
     {

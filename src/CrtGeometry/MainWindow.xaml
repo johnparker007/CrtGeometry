@@ -67,8 +67,8 @@
         <DataGrid Grid.Row="1" ItemsSource="{Binding Candidates}" SelectedItem="{Binding SelectedGame}" AutoGenerateColumns="False" IsReadOnly="True" CanUserAddRows="False">
          <DataGrid.Columns><DataGridTextColumn Header="Description" Binding="{Binding DisplayName}" Width="2*"/><DataGridTextColumn Header="ROM" Binding="{Binding RomName}" Width="120"/><DataGridTextColumn Header="Year" Binding="{Binding Year}" Width="70"/><DataGridTextColumn Header="Manufacturer" Binding="{Binding Manufacturer}" Width="*"/><DataGridTextColumn Header="Video" Binding="{Binding VideoMode.Message}" Width="250"/></DataGrid.Columns>
         </DataGrid>
-        <StackPanel Grid.Row="2" Margin="0,8" Orientation="Horizontal"><TextBlock Margin="0,4,15,0" Text="{Binding VideoModeMessage}"/>
-         <TextBlock Margin="4" Text="HSH"/><TextBox Width="38" Text="{Binding HSH}"/><TextBlock Margin="4" Text="VSL"/><TextBox Width="38" Text="{Binding VSL}"/><TextBlock Margin="4" Text="VAM"/><TextBox Width="38" Text="{Binding VAM}"/><TextBlock Margin="4" Text="VSC"/><TextBox Width="38" Text="{Binding VSC}"/><TextBlock Margin="4" Text="VSH"/><TextBox Width="38" Text="{Binding VSH}"/>
+        <StackPanel Grid.Row="2" Margin="0,8" Orientation="Horizontal"><StackPanel.Resources><Style x:Key="GeometryValueTextBox" TargetType="TextBox"><EventSetter Event="GotKeyboardFocus" Handler="GeometryTextBox_GotKeyboardFocus"/></Style></StackPanel.Resources><TextBlock Margin="0,4,15,0" Text="{Binding VideoModeMessage}"/>
+         <TextBlock Margin="4" Text="HSH"/><TextBox Width="38" Style="{StaticResource GeometryValueTextBox}" Text="{Binding HSH}"/><TextBlock Margin="4" Text="VSL"/><TextBox Width="38" Style="{StaticResource GeometryValueTextBox}" Text="{Binding VSL}"/><TextBlock Margin="4" Text="VAM"/><TextBox Width="38" Style="{StaticResource GeometryValueTextBox}" Text="{Binding VAM}"/><TextBlock Margin="4" Text="VSC"/><TextBox Width="38" Style="{StaticResource GeometryValueTextBox}" Text="{Binding VSC}"/><TextBlock Margin="4" Text="VSH"/><TextBox Width="38" Style="{StaticResource GeometryValueTextBox}" Text="{Binding VSH}"/>
          <Button Margin="12,0,4,0" Click="PreviewCalibration_Click">Preview</Button><Button Click="ApplyCalibration_Click">Confirm / apply</Button></StackPanel>
         <DockPanel Grid.Row="3"><StackPanel DockPanel.Dock="Top"><TextBlock FontWeight="Bold" Text="{Binding PreviewSummary}"/><TextBlock Foreground="DarkGreen" Text="{Binding Status}"/></StackPanel><DataGrid ItemsSource="{Binding MatchingGames}" IsReadOnly="True" AutoGenerateColumns="False"><DataGrid.Columns><DataGridTextColumn Header="Description" Binding="{Binding DisplayName}" Width="2*"/><DataGridTextColumn Header="ROM" Binding="{Binding RomName}" Width="*"/><DataGridTextColumn Header="Current assignment" Binding="{Binding ProfileStatus}" Width="150"/></DataGrid.Columns></DataGrid></DockPanel>
        </Grid>
@@ -123,8 +123,8 @@
       </TabItem>
       <TabItem Header="Firmware / Arduino">
        <StackPanel Margin="16">
-        <TextBlock FontSize="24" FontWeight="SemiBold" Text="Arduino Profile Database" />
-        <TextBlock Margin="0,8,0,16" TextWrapping="Wrap" Text="Generate the AVR PROGMEM geometry table directly from the authoritative SQLite profiles. This does not compile or upload firmware." />
+        <TextBlock FontSize="24" FontWeight="SemiBold" Text="Arduino Game Database" />
+        <TextBlock Margin="0,8,0,16" TextWrapping="Wrap" Text="Preview and generate profiles plus assigned, included, present MAME games as a compact AVR PROGMEM database. This does not compile or upload firmware." />
         <TextBlock FontWeight="Bold" Text="Firmware directory"/>
         <DockPanel Margin="0,5,0,12">
          <Button DockPanel.Dock="Right" Width="100" Margin="8,0,0,0" Click="BrowseFirmware_Click">Browse...</Button>
@@ -133,12 +133,19 @@
         <TextBlock><Run FontWeight="Bold" Text="Output: "/><Run x:Name="FirmwareOutputPath"/></TextBlock>
         <Grid Margin="0,16,0,12" MaxWidth="500" HorizontalAlignment="Left">
          <Grid.ColumnDefinitions><ColumnDefinition Width="260"/><ColumnDefinition Width="100"/></Grid.ColumnDefinitions>
-         <Grid.RowDefinitions><RowDefinition/><RowDefinition/><RowDefinition/><RowDefinition/><RowDefinition/></Grid.RowDefinitions>
+         <Grid.RowDefinitions><RowDefinition/><RowDefinition/><RowDefinition/><RowDefinition/><RowDefinition/><RowDefinition/><RowDefinition/><RowDefinition/><RowDefinition/><RowDefinition/><RowDefinition/><RowDefinition/></Grid.RowDefinitions>
          <TextBlock Text="Profile count"/><TextBlock Grid.Column="1" x:Name="FirmwareProfileCount"/>
          <TextBlock Grid.Row="1" Text="Highest profile ID"/><TextBlock Grid.Row="1" Grid.Column="1" x:Name="FirmwareHighestId"/>
          <TextBlock Grid.Row="2" Text="Profile table estimate"/><TextBlock Grid.Row="2" Grid.Column="1" x:Name="FirmwareTableBytes"/>
          <TextBlock Grid.Row="3" Text="Validity bitmap estimate"/><TextBlock Grid.Row="3" Grid.Column="1" x:Name="FirmwareValidityBytes"/>
-         <TextBlock Grid.Row="4" FontWeight="Bold" Text="Total profile-data estimate"/><TextBlock Grid.Row="4" Grid.Column="1" FontWeight="Bold" x:Name="FirmwareTotalBytes"/>
+         <TextBlock Grid.Row="4" Text="Generated games"/><TextBlock Grid.Row="4" Grid.Column="1" x:Name="FirmwareGameCount"/>
+         <TextBlock Grid.Row="5" Text="Packed names"/><TextBlock Grid.Row="5" Grid.Column="1" x:Name="FirmwareNameBytes"/>
+         <TextBlock Grid.Row="6" Text="32-bit offsets"/><TextBlock Grid.Row="6" Grid.Column="1" x:Name="FirmwareOffsetBytes"/>
+         <TextBlock Grid.Row="7" Text="Game/profile mapping"/><TextBlock Grid.Row="7" Grid.Column="1" x:Name="FirmwareMappingBytes"/>
+         <TextBlock Grid.Row="8" Text="Alphabet jump table"/><TextBlock Grid.Row="8" Grid.Column="1" x:Name="FirmwareJumpBytes"/>
+         <TextBlock Grid.Row="9" Text="Average name length"/><TextBlock Grid.Row="9" Grid.Column="1" x:Name="FirmwareAverageName"/>
+         <TextBlock Grid.Row="10" Text="Longest name"/><TextBlock Grid.Row="10" Grid.Column="1" x:Name="FirmwareLongestName"/>
+         <TextBlock Grid.Row="11" FontWeight="Bold" Text="Total generated data"/><TextBlock Grid.Row="11" Grid.Column="1" FontWeight="Bold" x:Name="FirmwareTotalBytes"/>
         </Grid>
         <WrapPanel><Button Width="170" Height="32" Click="GenerateFirmware_Click">Generate Database</Button><Button Width="120" Height="32" Margin="8,0,0,0" Click="RefreshFirmware_Click">Refresh stats</Button></WrapPanel>
         <TextBlock x:Name="FirmwareStatus" Margin="0,14,0,0" TextWrapping="Wrap" FontWeight="SemiBold"/>

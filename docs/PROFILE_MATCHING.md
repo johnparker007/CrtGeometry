@@ -27,10 +27,20 @@ primary. Such a game can still receive a manual profile assignment.
 
 The calibration screen reuses catalogue search: description, ROM shortname,
 manufacturer, and year. A selected title supplies its stable ROM shortname without
-requiring the user to know it. The preview finds currently present, included games
-with the same canonical signature. Confirmation records a calibration event, makes
-that event the active mapping for the signature, and assigns its profile automatically
-to those games.
+requiring the user to know it. The preview finds currently present, included,
+**non-clone** games (`CloneOf` is null or empty) with the same canonical signature.
+This prevents regional/set clones from receiving redundant automatic assignments.
+If the explicitly selected calibration source is itself a clone, that source is
+included as a deliberate exception, while other matching clones remain excluded.
+Clones remain stored and searchable in the desktop catalogue, and may still receive
+manual overrides.
+
+Preview is informational rather than a prerequisite. Confirmation always validates
+the current source and geometry and rebuilds the canonical signature, matching set,
+profile-reuse decision, and proposed profile ID from current SQLite state. It never
+applies a cached preview. Confirmation records a calibration event, makes that event
+the active mapping for the signature, and assigns its profile automatically to the
+freshly calculated set.
 
 Profiles are value objects for reuse: if HSH, VSL, VAM, VSC, and VSH exactly equal an
 existing profile, the lowest-ID identical profile is reused. Otherwise the normal
@@ -53,7 +63,8 @@ otherwise the game becomes unassigned.
 MAME import owns catalogue fields and display rows only. It upserts machines by ROM
 shortname and never deletes profile assignments, signature mappings, calibration
 events, profile notes, or profiles. Machines absent from a later import are marked
-absent, and automatic propagation considers only currently present, included games.
+absent, and automatic propagation considers only currently present, included parent
+(non-clone) games, plus an explicitly selected clone source.
 
 Profile deletion is blocked by SQLite foreign keys while any assignment,
 calibration, or active signature mapping references it. Remove those references

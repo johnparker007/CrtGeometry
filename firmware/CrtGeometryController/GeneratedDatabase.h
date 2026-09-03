@@ -19,6 +19,12 @@ struct GeneratedGeometryProfile
 const uint16_t GENERATED_PROFILE_COUNT = 6;
 const uint8_t GENERATED_MAX_PROFILE_ID = 6;
 const uint8_t GENERATED_PROFILE_VALIDITY_BYTES = 32;
+const uint16_t GENERATED_GAME_COUNT = 0;
+const uint32_t GENERATED_TOTAL_NAME_BITS = 0UL;
+const uint32_t GENERATED_PACKED_NAME_BYTES = 0UL;
+const uint32_t GENERATED_DATABASE_BYTES = 1366UL;
+
+const char GENERATED_NAME_ALPHABET[65] PROGMEM = " ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789-/.\'&+:!?,()[]*=_%#@$<>;^~|";
 
 const GeneratedGeometryProfile GENERATED_PROFILES[256] PROGMEM =
 {
@@ -286,6 +292,15 @@ const uint8_t GENERATED_PROFILE_VALIDITY[32] PROGMEM =
     0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
     0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
     0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00
+};
+
+const uint8_t GENERATED_GAME_NAME_BITS[1] PROGMEM = { 0 };
+const uint32_t GENERATED_GAME_NAME_BIT_OFFSETS[1] PROGMEM = { 0 };
+const uint8_t GENERATED_GAME_PROFILE_IDS[1] PROGMEM = { 0 };
+const uint16_t GENERATED_ALPHABET_JUMPS[27] PROGMEM =
+{
+    0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+    0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0
 };
 
 #endif

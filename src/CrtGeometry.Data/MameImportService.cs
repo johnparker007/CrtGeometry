@@ -28,8 +28,7 @@ public sealed class MameImportService(string connectionString, MameXmlParser? pa
         IProgress<MameParseProgress>? progress = null, CancellationToken cancellationToken = default)
     {
         var timer = Stopwatch.StartNew();
-        using var connection = new SqliteConnection(connectionString);
-        connection.Open();
+        using var connection = SqliteConnectionFactory.Open(connectionString);
         using var transaction = connection.BeginTransaction();
         var importId = CreateImport(connection, transaction, sourceFileName);
         var total = 0; var included = 0; var withDisplays = 0;

@@ -26,11 +26,14 @@ public sealed class GameCatalogueEntry
     public bool IsPresent { get; init; }
     public MameExclusionReason ExclusionReasons { get; init; }
     public int? ProfileId { get; init; }
+    public ProfileAssignmentType? AssignmentType { get; init; }
+    public string? CalibrationSourceRomName { get; init; }
     public List<MameDisplay> Displays { get; } = [];
 
     public string DisplayName => string.IsNullOrWhiteSpace(Description) ? RomName : Description;
     public string InclusionStatus => IsIncluded ? "Included" : $"Excluded: {ExclusionReasonText}";
-    public string ProfileStatus => ProfileId is int id ? $"Profile {id}" : "Unassigned";
+    public string ProfileStatus => ProfileId is int id ? $"Profile {id} / {AssignmentType}" : "Unassigned";
+    public VideoModeSelection VideoMode => new VideoSignatureService().SelectPrimary(Displays);
     public string ExclusionReasonText => ExclusionReasons == MameExclusionReason.None ? "None" :
         string.Join(", ", Enum.GetValues<MameExclusionReason>()
             .Where(value => value != MameExclusionReason.None && ExclusionReasons.HasFlag(value))

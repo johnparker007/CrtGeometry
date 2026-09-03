@@ -42,6 +42,10 @@
            <TextBlock><Run FontWeight="Bold" Text="Present: "/><Run Text="{Binding SelectedGame.IsPresent}"/></TextBlock>
            <TextBlock Text="{Binding SelectedGame.InclusionStatus}" TextWrapping="Wrap"/>
            <TextBlock><Run FontWeight="Bold" Text="Coin inputs: "/><Run Text="{Binding SelectedGame.CoinInputs,TargetNullValue=Unknown}"/></TextBlock>
+           <TextBlock><Run FontWeight="Bold" Text="Assignment: "/><Run Text="{Binding SelectedGame.ProfileStatus}"/></TextBlock>
+           <TextBlock><Run FontWeight="Bold" Text="Signature: "/><Run Text="{Binding SelectedGame.VideoMode.Message}"/></TextBlock>
+           <TextBlock><Run FontWeight="Bold" Text="Calibration source ROM: "/><Run Text="{Binding SelectedGame.CalibrationSourceRomName,TargetNullValue=None}"/></TextBlock>
+           <WrapPanel Margin="0,8,0,0"><TextBox x:Name="ManualProfileId" Width="55" ToolTip="Profile ID (1..255)"/><Button Margin="5,0" Click="ManualAssign_Click">Assign manual</Button><Button Click="ResetOverride_Click">Reset override</Button></WrapPanel>
           </StackPanel>
           <DataGrid Grid.Column="1" Margin="12,0,0,0" ItemsSource="{Binding SelectedGame.Displays}" AutoGenerateColumns="False" IsReadOnly="True" CanUserAddRows="False">
            <DataGrid.Columns>
@@ -54,6 +58,19 @@
           </DataGrid>
          </Grid>
         </GroupBox>
+       </Grid>
+      </TabItem>
+      <TabItem Header="Calibration">
+       <Grid x:Name="CalibrationPanel" Margin="8">
+        <Grid.RowDefinitions><RowDefinition Height="Auto"/><RowDefinition Height="2*"/><RowDefinition Height="Auto"/><RowDefinition Height="2*"/></Grid.RowDefinitions>
+        <StackPanel><TextBlock FontSize="24" FontWeight="SemiBold" Text="New calibration"/><TextBlock Text="Search by title, ROM, manufacturer, or year; choose the exact human-readable MAME entry."/><TextBox Margin="0,8" Width="380" HorizontalAlignment="Left" Text="{Binding SearchText,UpdateSourceTrigger=PropertyChanged}"/></StackPanel>
+        <DataGrid Grid.Row="1" ItemsSource="{Binding Candidates}" SelectedItem="{Binding SelectedGame}" AutoGenerateColumns="False" IsReadOnly="True" CanUserAddRows="False">
+         <DataGrid.Columns><DataGridTextColumn Header="Description" Binding="{Binding DisplayName}" Width="2*"/><DataGridTextColumn Header="ROM" Binding="{Binding RomName}" Width="120"/><DataGridTextColumn Header="Year" Binding="{Binding Year}" Width="70"/><DataGridTextColumn Header="Manufacturer" Binding="{Binding Manufacturer}" Width="*"/><DataGridTextColumn Header="Video" Binding="{Binding VideoMode.Message}" Width="250"/></DataGrid.Columns>
+        </DataGrid>
+        <StackPanel Grid.Row="2" Margin="0,8" Orientation="Horizontal"><TextBlock Margin="0,4,15,0" Text="{Binding VideoModeMessage}"/>
+         <TextBlock Margin="4" Text="HSH"/><TextBox Width="38" Text="{Binding HSH}"/><TextBlock Margin="4" Text="VSL"/><TextBox Width="38" Text="{Binding VSL}"/><TextBlock Margin="4" Text="VAM"/><TextBox Width="38" Text="{Binding VAM}"/><TextBlock Margin="4" Text="VSC"/><TextBox Width="38" Text="{Binding VSC}"/><TextBlock Margin="4" Text="VSH"/><TextBox Width="38" Text="{Binding VSH}"/>
+         <Button Margin="12,0,4,0" Click="PreviewCalibration_Click">Preview</Button><Button Click="ApplyCalibration_Click">Confirm / apply</Button></StackPanel>
+        <DockPanel Grid.Row="3"><StackPanel DockPanel.Dock="Top"><TextBlock FontWeight="Bold" Text="{Binding PreviewSummary}"/><TextBlock Foreground="DarkGreen" Text="{Binding Status}"/></StackPanel><DataGrid ItemsSource="{Binding MatchingGames}" IsReadOnly="True" AutoGenerateColumns="False"><DataGrid.Columns><DataGridTextColumn Header="Description" Binding="{Binding DisplayName}" Width="2*"/><DataGridTextColumn Header="ROM" Binding="{Binding RomName}" Width="*"/><DataGridTextColumn Header="Current assignment" Binding="{Binding ProfileStatus}" Width="150"/></DataGrid.Columns></DataGrid></DockPanel>
        </Grid>
       </TabItem>
       <TabItem Header="Profiles">
@@ -73,6 +90,9 @@
                 <DataGridTextColumn Header="VSC" Binding="{Binding VSC, UpdateSourceTrigger=PropertyChanged, ValidatesOnExceptions=True}" Width="70" />
                 <DataGridTextColumn Header="VSH" Binding="{Binding VSH, UpdateSourceTrigger=PropertyChanged, ValidatesOnExceptions=True}" Width="70" />
                 <DataGridTextColumn Header="Notes" Binding="{Binding Notes, UpdateSourceTrigger=PropertyChanged}" Width="*" />
+                <DataGridTextColumn Header="Calibration source" Binding="{Binding CalibrationSourceTitle}" Width="180" IsReadOnly="True" />
+                <DataGridTextColumn Header="Source ROM" Binding="{Binding CalibrationSourceRomName}" Width="100" IsReadOnly="True" />
+                <DataGridTextColumn Header="Games" Binding="{Binding AssignedGameCount}" Width="65" IsReadOnly="True" />
             </DataGrid.Columns>
         </DataGrid>
        </DockPanel>

@@ -16,6 +16,7 @@ public sealed class GamesViewModel : INotifyPropertyChanged
     private ProfileFilter _profile = ProfileFilter.All;
     private GameCatalogueEntry? _selectedGame;
     private IReadOnlyList<GameCatalogueEntry> _games = [];
+    private CancellationTokenSource? _refreshCancellation;
 
     public GamesViewModel(GameCatalogueRepository repository)
     {
@@ -38,8 +39,14 @@ public sealed class GamesViewModel : INotifyPropertyChanged
 
     public async Task RefreshAsync()
     {
+        _refreshCancellation?.Cancel();
+        var cancellation = new CancellationTokenSource();
+        _refreshCancellation = cancellation;
         var query = new GameCatalogueQuery { SearchText=SearchText, Inclusion=Inclusion, Presence=Presence, Profile=Profile };
-        var results = await Task.Run(() => _repository.Search(query));
+        IReadOnlyList<GameCatalogueEntry> results;
+        try { results = await _repository.SearchAsync(query, cancellation.Token); }
+        catch (OperationCanceledException) { return; }
+        if (_refreshCancellation != cancellation) return;
         Games = results;
         if (SelectedGame is not null) SelectedGame = results.FirstOrDefault(x => x.RomName == SelectedGame.RomName);
     }

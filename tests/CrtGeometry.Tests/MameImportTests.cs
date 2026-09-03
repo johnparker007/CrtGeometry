@@ -103,12 +103,26 @@ public sealed class MameImportTests : IDisposable
         }
         new DatabaseInitializer(_connectionString).Initialize();
         Assert.Equal("keep", new GeometryProfileRepository(_connectionString).GetAll().Single().Notes);
-        using (var c = Open()) { using var cmd = c.CreateCommand(); cmd.CommandText = "PRAGMA user_version=3;"; cmd.ExecuteNonQuery(); }
+        using (var c = Open()) { using var cmd = c.CreateCommand(); cmd.CommandText = "PRAGMA user_version=4;"; cmd.ExecuteNonQuery(); }
         Assert.Throws<InvalidOperationException>(() => new DatabaseInitializer(_connectionString).Initialize());
+    }
+
+    [Fact]
+    public void VersionTwoMigrationPreservesProfilesAndCatalogueRows()
+    {
+        var profiles=new GeometryProfileRepository(_connectionString);
+        profiles.Save(new GeometryProfile(9){HSH=1,VSL=2,VAM=3,VSC=4,VSH=5,Notes="phase one"});
+        new MameImportService(_connectionString).Import(Bytes(Xml("Phase three catalogue")));
+        using(var c=Open()){using var cmd=c.CreateCommand();cmd.CommandText="PRAGMA user_version=2;";cmd.ExecuteNonQuery();}
+        // Simulate the exact released v2 shape by removing only Phase 4 objects.
+        using(var c=Open()){using var cmd=c.CreateCommand();cmd.CommandText="DROP TABLE GameProfileAssignments; DROP TABLE VideoProfileMappings; DROP TABLE CalibrationRecords;";cmd.ExecuteNonQuery();}
+        new DatabaseInitializer(_connectionString).Initialize();
+        Assert.Equal("phase one",profiles.GetAll().Single().Notes);
+        Assert.Equal("Phase three catalogue",new GameCatalogueRepository(_connectionString).Search(new()).Single().Description);
     }
 
     private static string Xml(string description) => $"<mame build='0.139'><game name='test'><description>{description}</description><display type='raster' width='320' height='240' rotate='0' refresh='60.0'/><input coins='1'/></game></mame>";
     private static MemoryStream Bytes(string value) => new(Encoding.UTF8.GetBytes(value));
-    private SqliteConnection Open() { var c = new SqliteConnection(_connectionString); c.Open(); return c; }
+    private SqliteConnection Open() => SqliteConnectionFactory.Open(_connectionString);
     public void Dispose() { SqliteConnection.ClearAllPools(); File.Delete(_path); }
 }

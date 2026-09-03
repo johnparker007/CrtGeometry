@@ -61,6 +61,13 @@ public sealed class ProfilesViewModel : INotifyPropertyChanged
         StatusMessage = $"Deleted profile {deletedId}.";
     }
 
+    public void Reload()
+    {
+        var selected=SelectedProfile?.Id; Profiles.Clear();
+        foreach(var profile in _repository.GetAll()) Profiles.Add(profile);
+        SelectedProfile=Profiles.FirstOrDefault(x=>x.Id==selected);
+    }
+
     public event PropertyChangedEventHandler? PropertyChanged;
     private void OnPropertyChanged([CallerMemberName] string? propertyName = null) =>
         PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(propertyName));

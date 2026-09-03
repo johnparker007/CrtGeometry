@@ -9,7 +9,13 @@ public sealed class GeometryProfileRepository(string connectionString)
     {
         using var connection = OpenConnection();
         using var command = connection.CreateCommand();
-        command.CommandText = "SELECT Id, HSH, VSL, VAM, VSC, VSH, Notes FROM GeometryProfiles ORDER BY Id;";
+        command.CommandText = """
+            SELECT p.Id,p.HSH,p.VSL,p.VAM,p.VSC,p.VSH,p.Notes,
+              (SELECT c.SourceRomName FROM CalibrationRecords c WHERE c.ProfileId=p.Id ORDER BY c.Id DESC LIMIT 1),
+              (SELECT m.Description FROM CalibrationRecords c JOIN MameMachines m ON m.RomName=c.SourceRomName WHERE c.ProfileId=p.Id ORDER BY c.Id DESC LIMIT 1),
+              (SELECT COUNT(*) FROM GameProfileAssignments a WHERE a.ProfileId=p.Id)
+            FROM GeometryProfiles p ORDER BY p.Id;
+            """;
         using var reader = command.ExecuteReader();
         var profiles = new List<GeometryProfile>();
         while (reader.Read())
@@ -18,7 +24,10 @@ public sealed class GeometryProfileRepository(string connectionString)
             {
                 HSH = reader.GetInt32(1), VSL = reader.GetInt32(2),
                 VAM = reader.GetInt32(3), VSC = reader.GetInt32(4), VSH = reader.GetInt32(5),
-                Notes = reader.IsDBNull(6) ? null : reader.GetString(6)
+                Notes = reader.IsDBNull(6) ? null : reader.GetString(6),
+                CalibrationSourceRomName = reader.IsDBNull(7) ? null : reader.GetString(7),
+                CalibrationSourceTitle = reader.IsDBNull(8) ? null : reader.GetString(8),
+                AssignedGameCount = reader.GetInt32(9)
             });
         }
         return profiles;
@@ -54,8 +63,6 @@ public sealed class GeometryProfileRepository(string connectionString)
 
     private SqliteConnection OpenConnection()
     {
-        var connection = new SqliteConnection(connectionString);
-        connection.Open();
-        return connection;
+        return SqliteConnectionFactory.Open(connectionString);
     }
 }

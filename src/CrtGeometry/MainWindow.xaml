@@ -1,8 +1,61 @@
 <Window x:Class="CrtGeometry.MainWindow"
         xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
-        Title="CRT Geometry" Height="520" Width="850" MinHeight="360" MinWidth="650">
+        Title="CRT Geometry" Height="700" Width="1180" MinHeight="520" MinWidth="850">
     <TabControl Margin="16">
+      <TabItem Header="Games">
+       <Grid x:Name="GamesPanel" Margin="8">
+        <Grid.RowDefinitions><RowDefinition Height="Auto"/><RowDefinition Height="3*"/><RowDefinition Height="2*"/></Grid.RowDefinitions>
+        <StackPanel Grid.Row="0">
+         <TextBlock FontSize="24" FontWeight="SemiBold" Text="Games Catalogue"/>
+         <WrapPanel Margin="0,10,0,10" VerticalAlignment="Center">
+          <TextBox Width="300" Margin="0,0,14,0" ToolTip="Search description, ROM name, manufacturer, or year" Text="{Binding SearchText,UpdateSourceTrigger=PropertyChanged}"/>
+          <TextBlock Margin="0,4,5,0" Text="Inclusion:"/><ComboBox Width="125" Margin="0,0,14,0" ItemsSource="{Binding InclusionOptions}" SelectedItem="{Binding Inclusion}"/>
+          <TextBlock Margin="0,4,5,0" Text="Presence:"/><ComboBox Width="115" Margin="0,0,14,0" ItemsSource="{Binding PresenceOptions}" SelectedItem="{Binding Presence}"/>
+          <TextBlock Margin="0,4,5,0" Text="Profile:"/><ComboBox Width="120" Margin="0,0,14,0" ItemsSource="{Binding ProfileOptions}" SelectedItem="{Binding Profile}"/>
+          <TextBlock Margin="0,4,0,0" Text="{Binding ResultSummary}"/>
+         </WrapPanel>
+        </StackPanel>
+        <DataGrid Grid.Row="1" ItemsSource="{Binding Games}" SelectedItem="{Binding SelectedGame}" AutoGenerateColumns="False" IsReadOnly="True"
+                  CanUserAddRows="False" EnableRowVirtualization="True" EnableColumnVirtualization="True" VirtualizingPanel.IsVirtualizing="True" VirtualizingPanel.VirtualizationMode="Recycling">
+         <DataGrid.Columns>
+          <DataGridTextColumn Header="Description" Binding="{Binding DisplayName}" Width="2*" SortMemberPath="Description"/>
+          <DataGridTextColumn Header="ROM" Binding="{Binding RomName}" Width="110"/>
+          <DataGridTextColumn Header="Year" Binding="{Binding Year}" Width="70"/>
+          <DataGridTextColumn Header="Manufacturer" Binding="{Binding Manufacturer}" Width="*"/>
+          <DataGridTextColumn Header="Resolution" Binding="{Binding ResolutionSummary}" Width="145" CanUserSort="False"/>
+          <DataGridTextColumn Header="Orientation" Binding="{Binding RotationSummary}" Width="90" CanUserSort="False"/>
+          <DataGridTextColumn Header="Refresh" Binding="{Binding RefreshSummary}" Width="105" CanUserSort="False"/>
+          <DataGridTextColumn Header="Status" Binding="{Binding InclusionStatus}" Width="150"/>
+          <DataGridTextColumn Header="Profile" Binding="{Binding ProfileStatus}" Width="90"/>
+         </DataGrid.Columns>
+        </DataGrid>
+        <GroupBox Grid.Row="2" Header="Selected game details" Margin="0,10,0,0">
+         <Grid Margin="8">
+          <Grid.ColumnDefinitions><ColumnDefinition Width="280"/><ColumnDefinition Width="*"/></Grid.ColumnDefinitions>
+          <StackPanel>
+           <TextBlock FontSize="18" FontWeight="SemiBold" Text="{Binding SelectedGame.DisplayName}" TextWrapping="Wrap"/>
+           <TextBlock><Run FontWeight="Bold" Text="ROM: "/><Run Text="{Binding SelectedGame.RomName}"/></TextBlock>
+           <TextBlock><Run FontWeight="Bold" Text="Year: "/><Run Text="{Binding SelectedGame.Year}"/></TextBlock>
+           <TextBlock><Run FontWeight="Bold" Text="Manufacturer: "/><Run Text="{Binding SelectedGame.Manufacturer}"/></TextBlock>
+           <TextBlock><Run FontWeight="Bold" Text="Clone of: "/><Run Text="{Binding SelectedGame.CloneOf}"/></TextBlock>
+           <TextBlock><Run FontWeight="Bold" Text="Present: "/><Run Text="{Binding SelectedGame.IsPresent}"/></TextBlock>
+           <TextBlock Text="{Binding SelectedGame.InclusionStatus}" TextWrapping="Wrap"/>
+           <TextBlock><Run FontWeight="Bold" Text="Coin inputs: "/><Run Text="{Binding SelectedGame.CoinInputs,TargetNullValue=Unknown}"/></TextBlock>
+          </StackPanel>
+          <DataGrid Grid.Column="1" Margin="12,0,0,0" ItemsSource="{Binding SelectedGame.Displays}" AutoGenerateColumns="False" IsReadOnly="True" CanUserAddRows="False">
+           <DataGrid.Columns>
+            <DataGridTextColumn Header="Type" Binding="{Binding Type}"/><DataGridTextColumn Header="Width" Binding="{Binding Width}"/><DataGridTextColumn Header="Height" Binding="{Binding Height}"/>
+            <DataGridTextColumn Header="Rotate" Binding="{Binding Rotate}"/><DataGridTextColumn Header="Refresh" Binding="{Binding Refresh,StringFormat={}{0:0.######}}"/>
+            <DataGridTextColumn Header="Pixel clock" Binding="{Binding PixelClock}"/><DataGridTextColumn Header="HTotal" Binding="{Binding HTotal}"/>
+            <DataGridTextColumn Header="HB start" Binding="{Binding HBStart}"/><DataGridTextColumn Header="HB end" Binding="{Binding HBEnd}"/>
+            <DataGridTextColumn Header="VTotal" Binding="{Binding VTotal}"/><DataGridTextColumn Header="VB start" Binding="{Binding VBStart}"/><DataGridTextColumn Header="VB end" Binding="{Binding VBEnd}"/>
+           </DataGrid.Columns>
+          </DataGrid>
+         </Grid>
+        </GroupBox>
+       </Grid>
+      </TabItem>
       <TabItem Header="Profiles">
        <DockPanel Margin="8">
         <TextBlock DockPanel.Dock="Top" Margin="0,0,0,12" FontSize="24" FontWeight="SemiBold" Text="Geometry Profiles" />

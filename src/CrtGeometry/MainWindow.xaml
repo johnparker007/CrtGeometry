@@ -107,5 +107,19 @@
         <TextBox x:Name="ImportSummary" Margin="0,16,0,0" MinHeight="180" IsReadOnly="True" TextWrapping="Wrap" VerticalScrollBarVisibility="Auto" />
        </StackPanel>
       </TabItem>
+      <TabItem Header="Data">
+       <StackPanel Margin="16">
+        <TextBlock FontSize="24" FontWeight="SemiBold" Text="CSV Import / Export" />
+        <TextBlock Margin="0,8,0,16" TextWrapping="Wrap" Text="Export or restore application-owned profiles, calibration history, active signature mappings, and assignments. SQLite remains authoritative; the MAME catalogue is not included." />
+        <WrapPanel>
+         <Button Width="150" Height="32" Margin="0,0,8,0" Click="ExportCsv_Click">Export CSV ZIP...</Button>
+         <Button Width="150" Height="32" Margin="0,0,16,0" Click="ValidateCsv_Click">Import CSV ZIP...</Button>
+         <TextBlock Margin="0,7,6,0" Text="Mode:"/><ComboBox x:Name="CsvMode" Width="210" SelectedIndex="0"><ComboBoxItem Content="Merge"/><ComboBoxItem Content="Replace user configuration"/></ComboBox>
+        </WrapPanel>
+        <TextBlock x:Name="CsvStatus" Margin="0,16,0,6" Text="No CSV set selected." FontWeight="SemiBold"/>
+        <TextBox x:Name="CsvSummary" MinHeight="220" IsReadOnly="True" AcceptsReturn="True" TextWrapping="Wrap" VerticalScrollBarVisibility="Auto"/>
+        <Button x:Name="ApplyCsvButton" Width="150" Height="32" Margin="0,12,0,0" HorizontalAlignment="Left" IsEnabled="False" Click="ApplyCsv_Click">Apply import</Button>
+       </StackPanel>
+      </TabItem>
     </TabControl>
 </Window>

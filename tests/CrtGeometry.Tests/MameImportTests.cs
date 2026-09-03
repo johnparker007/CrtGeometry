@@ -93,6 +93,7 @@ public sealed class MameImportTests : IDisposable
     [Fact]
     public void VersionOneMigratesWithoutChangingProfilesAndNewerVersionIsRejected()
     {
+        SqliteConnection.ClearAllPools();
         File.Delete(_path);
         using (var c = Open())
         {

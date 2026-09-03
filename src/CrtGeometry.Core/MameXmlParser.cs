@@ -57,9 +57,12 @@ public sealed class MameXmlParser
             if (reader.NodeType != XmlNodeType.Element) continue;
             switch (reader.LocalName)
             {
-                case "description": machine.Description = reader.ReadElementContentAsString(); break;
-                case "year": machine.Year = reader.ReadElementContentAsString(); break;
-                case "manufacturer": machine.Manufacturer = reader.ReadElementContentAsString(); break;
+                // ReadString leaves the reader on the end element. In contrast,
+                // ReadElementContentAsString advances to the following sibling, which
+                // would then be skipped by the loop's next Read call.
+                case "description": machine.Description = reader.ReadString(); break;
+                case "year": machine.Year = reader.ReadString(); break;
+                case "manufacturer": machine.Manufacturer = reader.ReadString(); break;
                 case "input": machine.CoinInputs = Int(reader.GetAttribute("coins")); break;
                 case "display": machine.Displays.Add(ReadDisplay(reader)); break;
             }

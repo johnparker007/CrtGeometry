@@ -10,6 +10,7 @@ public partial class MainWindow : Window
 {
     private readonly ProfilesViewModel _viewModel;
     private readonly string _connectionString;
+    private readonly GamesViewModel _gamesViewModel;
 
     public MainWindow()
     {
@@ -24,6 +25,9 @@ public partial class MainWindow : Window
         new DatabaseInitializer(_connectionString).Initialize();
         _viewModel = new ProfilesViewModel(new GeometryProfileRepository(_connectionString));
         DataContext = _viewModel;
+        _gamesViewModel = new GamesViewModel(new GameCatalogueRepository(_connectionString));
+        GamesPanel.DataContext = _gamesViewModel;
+        Loaded += async (_, _) => await _gamesViewModel.RefreshAsync();
     }
 
     private async void Import_Click(object sender, RoutedEventArgs e)
@@ -39,6 +43,7 @@ public partial class MainWindow : Window
             var reasons = string.Join(Environment.NewLine, summary.ExclusionCounts.OrderBy(x => x.Key).Select(x => $"  {x.Key}: {x.Value:N0}"));
             ImportStatus.Text = "Import complete.";
             ImportSummary.Text = $"MAME build: {summary.Build ?? "not supplied"}{Environment.NewLine}Total machines: {summary.TotalMachines:N0}{Environment.NewLine}Included: {summary.IncludedMachines:N0}{Environment.NewLine}Excluded: {summary.ExcludedMachines:N0}{Environment.NewLine}Machines with displays: {summary.MachinesWithDisplays:N0}{Environment.NewLine}Duration: {summary.Duration:g}{Environment.NewLine}Exclusion reasons:{Environment.NewLine}{reasons}";
+            await _gamesViewModel.RefreshAsync();
         }
         catch (Exception exception)
         {

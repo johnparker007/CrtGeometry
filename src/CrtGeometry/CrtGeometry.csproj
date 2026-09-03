@@ -1,5 +1,4 @@
-﻿<Project Sdk="Microsoft.NET.Sdk">
-
+<Project Sdk="Microsoft.NET.Sdk">
   <PropertyGroup>
     <OutputType>WinExe</OutputType>
     <TargetFramework>net9.0-windows</TargetFramework>
@@ -7,5 +6,8 @@
     <ImplicitUsings>enable</ImplicitUsings>
     <UseWPF>true</UseWPF>
   </PropertyGroup>
-
+  <ItemGroup>
+    <ProjectReference Include="../CrtGeometry.Core/CrtGeometry.Core.csproj" />
+    <ProjectReference Include="../CrtGeometry.Data/CrtGeometry.Data.csproj" />
+  </ItemGroup>
 </Project>

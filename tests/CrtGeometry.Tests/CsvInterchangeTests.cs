@@ -18,7 +18,9 @@ public sealed class CsvInterchangeTests : IDisposable
         profiles.Save(new GeometryProfile(2){Notes=null});
         var calibration=new CalibrationRepository(cs); calibration.Apply(calibration.Preview("rtype",new(33,11,30,13,63)),new(33,11,30,13,63));
         calibration.AssignManual("zgame",2);
-        var a=Temp(".zip"),b=Temp(".zip"); var service=new CsvInterchangeService(cs); service.Export(a);service.Export(b);
+        var a=Temp(".zip");
+        var b=Temp(".zip");
+        var service=new CsvInterchangeService(cs); service.Export(a);service.Export(b);
         Assert.Equal(File.ReadAllBytes(a),File.ReadAllBytes(b));
         using var zip=ZipFile.OpenRead(a);
         var profileText=Text(zip,"profiles.csv"); Assert.True(profileText.IndexOf("2,",StringComparison.Ordinal)<profileText.IndexOf("17,",StringComparison.Ordinal));

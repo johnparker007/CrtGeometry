@@ -1,0 +1,2 @@
+<?xml version="1.0"?>
+<mame build="0.260"><machine name="modern"><description>Modern Machine</description><display type="raster" width="640" height="480" rotate="0" refresh="59.94"/><input coins="1"/></machine></mame>

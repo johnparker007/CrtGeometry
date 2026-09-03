@@ -2,12 +2,14 @@ using System.IO;
 using System.Windows;
 using CrtGeometry.Data;
 using Microsoft.Data.Sqlite;
+using Microsoft.Win32;
 
 namespace CrtGeometry;
 
 public partial class MainWindow : Window
 {
     private readonly ProfilesViewModel _viewModel;
+    private readonly string _connectionString;
 
     public MainWindow()
     {
@@ -15,13 +17,35 @@ public partial class MainWindow : Window
         var dataDirectory = Path.Combine(
             Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "CrtGeometry");
         Directory.CreateDirectory(dataDirectory);
-        var connectionString = new SqliteConnectionStringBuilder
+        _connectionString = new SqliteConnectionStringBuilder
         {
             DataSource = Path.Combine(dataDirectory, "profiles.db")
         }.ToString();
-        new DatabaseInitializer(connectionString).Initialize();
-        _viewModel = new ProfilesViewModel(new GeometryProfileRepository(connectionString));
+        new DatabaseInitializer(_connectionString).Initialize();
+        _viewModel = new ProfilesViewModel(new GeometryProfileRepository(_connectionString));
         DataContext = _viewModel;
+    }
+
+    private async void Import_Click(object sender, RoutedEventArgs e)
+    {
+        var dialog = new OpenFileDialog { Filter = "MAME XML (*.xml)|*.xml|All files (*.*)|*.*", Title = "Select MAME -listxml file" };
+        if (dialog.ShowDialog(this) != true) return;
+        ImportButton.IsEnabled = false; ImportProgress.IsIndeterminate = true; ImportSummary.Text = "";
+        var progress = new Progress<CrtGeometry.Core.MameParseProgress>(p =>
+            ImportStatus.Text = $"Parsed {p.MachinesParsed:N0} machines{(p.CurrentRomName is null ? "" : $" ({p.CurrentRomName})")}...");
+        try
+        {
+            var summary = await Task.Run(() => new MameImportService(_connectionString).Import(dialog.FileName, progress));
+            var reasons = string.Join(Environment.NewLine, summary.ExclusionCounts.OrderBy(x => x.Key).Select(x => $"  {x.Key}: {x.Value:N0}"));
+            ImportStatus.Text = "Import complete.";
+            ImportSummary.Text = $"MAME build: {summary.Build ?? "not supplied"}{Environment.NewLine}Total machines: {summary.TotalMachines:N0}{Environment.NewLine}Included: {summary.IncludedMachines:N0}{Environment.NewLine}Excluded: {summary.ExcludedMachines:N0}{Environment.NewLine}Machines with displays: {summary.MachinesWithDisplays:N0}{Environment.NewLine}Duration: {summary.Duration:g}{Environment.NewLine}Exclusion reasons:{Environment.NewLine}{reasons}";
+        }
+        catch (Exception exception)
+        {
+            ImportStatus.Text = "Import failed; the previous catalogue was preserved.";
+            MessageBox.Show(this, exception.Message, "MAME import failed", MessageBoxButton.OK, MessageBoxImage.Error);
+        }
+        finally { ImportButton.IsEnabled = true; ImportProgress.IsIndeterminate = false; }
     }
 
     private void Add_Click(object sender, RoutedEventArgs e)

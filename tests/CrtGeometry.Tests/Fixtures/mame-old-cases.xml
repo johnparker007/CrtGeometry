@@ -1,0 +1,13 @@
+<?xml version="1.0"?>
+<mame build="0.139 (fixture)" debug="no" mameconfig="10">
+  <game name="arcade" runnable="yes"><description>Arcade Game</description><year>1981</year><manufacturer>Example</manufacturer><display type="raster" width="288" height="224" rotate="90" refresh="60.606061" pixclock="6144000" htotal="384" hbend="0" hbstart="288" vtotal="264" vbend="0" vbstart="224"/><input coins="1"/></game>
+  <game name="bios" isbios="yes"><description>BIOS</description><display type="raster"/><input coins="1"/></game>
+  <game name="device" isdevice="yes"><description>Device</description><display type="raster"/><input coins="1"/></game>
+  <game name="mechanical" ismechanical="yes"><description>Mechanical</description><display type="raster"/><input coins="1"/></game>
+  <game name="norun" runnable="no"><description>Not runnable</description><display type="raster"/><input coins="1"/></game>
+  <game name="nodisplay"><description>No display</description><input coins="1"/></game>
+  <game name="vector"><description>Vector</description><display type="vector"/><input coins="1"/></game>
+  <game name="nocoin"><description>No coins</description><display type="raster"/><input coins="0"/></game>
+  <game name="missing"><description>Missing optional metadata</description><display width="320" height="240"/></game>
+  <game name="clone" cloneof="arcade"><description>Clone</description><display type="raster"/><input coins="1"/></game>
+</mame>

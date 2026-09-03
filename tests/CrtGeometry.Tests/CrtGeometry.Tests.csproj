@@ -19,4 +19,7 @@
   <ItemGroup>
     <Using Include="Xunit" />
   </ItemGroup>
+  <ItemGroup>
+    <None Include="Fixtures/*.xml" CopyToOutputDirectory="PreserveNewest" />
+  </ItemGroup>
 </Project>

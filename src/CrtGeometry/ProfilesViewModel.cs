@@ -34,13 +34,8 @@ public sealed class ProfilesViewModel : INotifyPropertyChanged
 
     public void Add()
     {
-        var nextId = Profiles.Count == 0 ? 1 : Profiles.Max(profile => profile.Id) + 1;
-        if (nextId > byte.MaxValue)
-        {
-            throw new InvalidOperationException("No profile IDs remain (the maximum is 255).");
-        }
-
-        var profile = new GeometryProfile { Id = nextId };
+        var nextId = ProfileIdAllocator.GetLowestAvailable(Profiles.Select(profile => profile.Id));
+        var profile = new GeometryProfile(nextId);
         _repository.Save(profile);
         Profiles.Add(profile);
         SelectedProfile = profile;

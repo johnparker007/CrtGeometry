@@ -30,7 +30,7 @@ public sealed class GeometryProfileRepositoryTests : IDisposable
     public void SaveReloadUpdateAndDeleteProfile()
     {
         var repository = new GeometryProfileRepository(_connectionString);
-        repository.Save(new GeometryProfile { Id = 7, HSH = 1, VSL = 2, VAM = 3, VSC = 4, VSH = 5, Notes = "Initial" });
+        repository.Save(new GeometryProfile(7) { HSH = 1, VSL = 2, VAM = 3, VSC = 4, VSH = 5, Notes = "Initial" });
 
         var saved = Assert.Single(repository.GetAll());
         Assert.Equal(7, saved.Id);
@@ -45,6 +45,24 @@ public sealed class GeometryProfileRepositoryTests : IDisposable
 
         repository.Delete(updated.Id);
         Assert.Empty(repository.GetAll());
+    }
+
+    [Theory]
+    [InlineData(-1)]
+    [InlineData(0)]
+    [InlineData(256)]
+    public void DatabaseRejectsInvalidProfileIds(int id)
+    {
+        using var connection = new SqliteConnection(_connectionString);
+        connection.Open();
+        using var command = connection.CreateCommand();
+        command.CommandText = """
+            INSERT INTO GeometryProfiles (Id, HSH, VSL, VAM, VSC, VSH)
+            VALUES ($id, 0, 0, 0, 0, 0);
+            """;
+        command.Parameters.AddWithValue("$id", id);
+
+        Assert.Throws<SqliteException>(() => command.ExecuteNonQuery());
     }
 
     public void Dispose()

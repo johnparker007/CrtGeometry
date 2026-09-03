@@ -4,6 +4,23 @@ namespace CrtGeometry.Tests;
 
 public sealed class GeometryProfileTests
 {
+    [Theory]
+    [InlineData(1)]
+    [InlineData(255)]
+    public void IdAcceptsValidRangeBoundaries(int id)
+    {
+        Assert.Equal(id, new GeometryProfile(id).Id);
+    }
+
+    [Theory]
+    [InlineData(-1)]
+    [InlineData(0)]
+    [InlineData(256)]
+    public void IdRejectsValuesOutsideValidRange(int id)
+    {
+        Assert.Throws<ArgumentOutOfRangeException>(() => new GeometryProfile(id));
+    }
+
     private static readonly Action<GeometryProfile, int>[] GeometrySetters =
     [
         (profile, value) => profile.HSH = value,
@@ -18,7 +35,7 @@ public sealed class GeometryProfileTests
     {
         foreach (var setValue in GeometrySetters)
         {
-            var profile = new GeometryProfile();
+            var profile = new GeometryProfile(1);
             setValue(profile, 0);
             setValue(profile, 63);
         }
@@ -29,7 +46,7 @@ public sealed class GeometryProfileTests
     {
         foreach (var setValue in GeometrySetters)
         {
-            var profile = new GeometryProfile();
+            var profile = new GeometryProfile(1);
             Assert.Throws<ArgumentOutOfRangeException>(() => setValue(profile, -1));
             Assert.Throws<ArgumentOutOfRangeException>(() => setValue(profile, 64));
         }

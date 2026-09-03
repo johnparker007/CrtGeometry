@@ -8,13 +8,28 @@ public sealed class GeometryProfile
     private int _vsc;
     private int _vsh;
 
-    public int Id { get; init; }
+    public GeometryProfile(int id)
+    {
+        Id = ValidateId(id);
+    }
+
+    public int Id { get; }
     public int HSH { get => _hsh; set => _hsh = Validate(value, nameof(HSH)); }
     public int VSL { get => _vsl; set => _vsl = Validate(value, nameof(VSL)); }
     public int VAM { get => _vam; set => _vam = Validate(value, nameof(VAM)); }
     public int VSC { get => _vsc; set => _vsc = Validate(value, nameof(VSC)); }
     public int VSH { get => _vsh; set => _vsh = Validate(value, nameof(VSH)); }
     public string? Notes { get; set; }
+
+    private static int ValidateId(int value)
+    {
+        if (value is < 1 or > byte.MaxValue)
+        {
+            throw new ArgumentOutOfRangeException(nameof(Id), value, "Profile IDs must be between 1 and 255.");
+        }
+
+        return value;
+    }
 
     private static int Validate(int value, string propertyName)
     {

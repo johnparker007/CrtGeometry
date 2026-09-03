@@ -14,9 +14,9 @@ public sealed class GeometryProfileRepository(string connectionString)
         var profiles = new List<GeometryProfile>();
         while (reader.Read())
         {
-            profiles.Add(new GeometryProfile
+            profiles.Add(new GeometryProfile(reader.GetInt32(0))
             {
-                Id = reader.GetInt32(0), HSH = reader.GetInt32(1), VSL = reader.GetInt32(2),
+                HSH = reader.GetInt32(1), VSL = reader.GetInt32(2),
                 VAM = reader.GetInt32(3), VSC = reader.GetInt32(4), VSH = reader.GetInt32(5),
                 Notes = reader.IsDBNull(6) ? null : reader.GetString(6)
             });

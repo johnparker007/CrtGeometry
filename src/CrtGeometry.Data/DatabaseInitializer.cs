@@ -32,7 +32,7 @@ public sealed class DatabaseInitializer(string connectionString)
         command.Transaction = transaction;
         command.CommandText = """
             CREATE TABLE GeometryProfiles (
-                Id INTEGER PRIMARY KEY,
+                Id INTEGER PRIMARY KEY CHECK (Id BETWEEN 1 AND 255),
                 HSH INTEGER NOT NULL CHECK (HSH BETWEEN 0 AND 63),
                 VSL INTEGER NOT NULL CHECK (VSL BETWEEN 0 AND 63),
                 VAM INTEGER NOT NULL CHECK (VAM BETWEEN 0 AND 63),

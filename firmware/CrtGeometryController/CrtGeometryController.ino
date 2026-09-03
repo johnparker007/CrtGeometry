@@ -9,28 +9,22 @@
 
     Memory optimised:
       - Debug strings use F()
-      - Manufacturer/platform database stored in PROGMEM
-      - Only current database records copied into SRAM
+      - Generated geometry profiles stay in PROGMEM
+      - Only the selected profile is copied into working SRAM
 
     ------------------------------------------------------------
     UI
     ------------------------------------------------------------
 
-    MANUFACTURER LEVEL
+    PROFILE SELECTOR
 
       Encoder 1 turn:
-        Browse manufacturer
+        Browse generated profile IDs
 
       Any encoder click:
-        Enter selected manufacturer
+        Load selected profile into editable working geometry
 
-      Any encoder hold:
-        No action (already at root)
-
-    PLATFORM LEVEL
-
-      Encoder 1 turn:
-        Browse platform/preset
+    GEOMETRY EDITOR
 
       Encoder 2 turn:
         Select HSH/VSL/VAM/VSC/VSH
@@ -42,7 +36,7 @@
         WRITE currently displayed geometry to NVRAM
 
       ANY encoder hold:
-        BACK to manufacturer list
+        BACK to profile selector and restore generated values
 
     ------------------------------------------------------------
     ROTARY DECODING
@@ -99,6 +93,7 @@
 #include <Wire.h>
 #include <LiquidCrystal.h>
 #include <avr/pgmspace.h>
+#include "GeneratedDatabase.h"
 
 
 // ============================================================
@@ -206,104 +201,20 @@ struct RawGeometry
 
 
 // ============================================================
-// FLASH-BACKED PRESET DATABASE
-// ============================================================
-
-const uint8_t MANUFACTURER_NAME_LENGTH = 12;
-const uint8_t PLATFORM_NAME_LENGTH     = 16;
-
-
-struct Manufacturer
-{
-    char name[MANUFACTURER_NAME_LENGTH];
-};
-
-
-struct Platform
-{
-    uint8_t manufacturerIndex;
-    uint16_t year;
-
-    char name[PLATFORM_NAME_LENGTH];
-
-    uint8_t hsh;
-    uint8_t vsl;
-    uint8_t vam;
-    uint8_t vsc;
-    uint8_t vsh;
-};
-
-
-/*
-    Manufacturer indexes:
-
-      0 Atari
-      1 Irem
-      2 Nintendo
-      3 Sega
-*/
-
-// **************** DO NOT MANUALLY EDIT!  CONTENT GENERATED FROM GOOGLE SHEET: Phillips CRT MAME Geometry Settings
-const Manufacturer MANUFACTURERS[] PROGMEM =
-{
-    { "Atlus" },
-    { "Irem" },
-    { "Konami" },
-    { "Namco" },
-    { "Tekhan" },
-};
-
-// **************** DO NOT MANUALLY EDIT!  CONTENT GENERATED FROM GOOGLE SHEET: Phillips CRT MAME Geometry Settings
-const Platform PLATFORMS[] PROGMEM =
-{
-    { 0, 1992, "DoDonPachi", 26, 37, 10, 23, 27 },
-    { 1, 1987, "M72 (R-Type)", 33, 11, 30, 13, 63 },
-    { 2, 1986, "GX early (Salamander)", 41, 28, 32, 21, 59 },
-    { 2, 1988, "GX later (Vulcan Venture)", 33, 28, 32, 21, 59 },
-    { 3, 1982, "Pacman", 7, 37, 19, 21, 45 },
-    { 4, 1984, "Star Force", 33, 30, 12, 28, 34 },
-};
-
-constexpr uint8_t MANUFACTURER_COUNT =
-    sizeof(MANUFACTURERS) /
-    sizeof(MANUFACTURERS[0]);
-
-constexpr uint8_t PLATFORM_COUNT =
-    sizeof(PLATFORMS) /
-    sizeof(PLATFORMS[0]);
-
-
-// ============================================================
-// MENU STATE
+// MENU STATE / WORKING GEOMETRY
 // ============================================================
 
 enum MenuLevel
 {
-    MENU_MANUFACTURER = 0,
-    MENU_PLATFORM
+    MENU_PROFILE_SELECT = 0,
+    MENU_GEOMETRY
 };
 
+MenuLevel menuLevel = MENU_PROFILE_SELECT;
+uint8_t selectedProfileId = 0;
 
-MenuLevel menuLevel = MENU_MANUFACTURER;
-
-uint8_t selectedManufacturer     = 0;
-uint8_t selectedPlatformPosition = 0;
-
-uint8_t lastPlatformPosition[MANUFACTURER_COUNT];
-
-
-// ============================================================
-// WORKING GEOMETRY
-// ============================================================
-
-Geometry currentGeometry =
-{
-    33, 11, 30, 13, 63
-};
-
-
+Geometry currentGeometry = { 33, 11, 30, 13, 63 };
 GeometryParameter selectedParameter = PARAM_HSH;
-
 
 // ============================================================
 // ROTARY ENCODER STATE
@@ -344,6 +255,47 @@ RotaryData encoder1;
 RotaryData encoder2;
 RotaryData encoder3;
 
+/*
+    Arduino's sketch preprocessor inserts function prototypes near
+    the first function definition. Keep explicit declarations for
+    functions that use sketch-defined rotary types so generated
+    prototypes can never appear before RotaryData/ButtonEvent.
+*/
+uint8_t readRotaryAB(const RotaryData& rotary);
+void setupRotary(RotaryData& rotary, uint8_t pinCLK, uint8_t pinDT, uint8_t pinSW);
+int8_t updateRotaryRotation(RotaryData& rotary);
+ButtonEvent updateRotaryButton(RotaryData& rotary);
+
+
+// ============================================================
+// GENERATED PROFILE DATABASE
+// ============================================================
+
+bool generatedProfileExists(uint8_t profileId)
+{
+    if (profileId == 0)
+        return false;
+
+    uint8_t validityByte = (uint8_t)pgm_read_byte(
+        &GENERATED_PROFILE_VALIDITY[profileId >> 3]);
+
+    return (validityByte & (uint8_t)(1U << (profileId & 7))) != 0;
+}
+
+bool loadGeneratedProfile(uint8_t profileId, Geometry& result)
+{
+    if (!generatedProfileExists(profileId))
+        return false;
+
+    GeneratedGeometryProfile generated;
+    memcpy_P(&generated, &GENERATED_PROFILES[profileId], sizeof(generated));
+    result.hsh = generated.hsh;
+    result.vsl = generated.vsl;
+    result.vam = generated.vam;
+    result.vsc = generated.vsc;
+    result.vsh = generated.vsh;
+    return true;
+}
 
 // ============================================================
 // QUADRATURE DECODER TABLE
@@ -385,32 +337,6 @@ uint8_t clampGeometryValue(int value)
         return 63;
 
     return (uint8_t)value;
-}
-
-
-// ============================================================
-// PROGMEM DATABASE HELPERS
-// ============================================================
-
-void loadManufacturer(
-    uint8_t index,
-    Manufacturer& result)
-{
-    memcpy_P(
-        &result,
-        &MANUFACTURERS[index],
-        sizeof(Manufacturer));
-}
-
-
-void loadPlatform(
-    uint8_t index,
-    Platform& result)
-{
-    memcpy_P(
-        &result,
-        &PLATFORMS[index],
-        sizeof(Platform));
 }
 
 
@@ -497,281 +423,75 @@ void lcdPrintLineF(
 
 
 // ============================================================
-// DATABASE HELPERS
+// GENERATED PROFILE SELECTION / LCD UI
 // ============================================================
 
-uint8_t countPlatformsForManufacturer(
-    uint8_t manufacturerIndex)
+uint8_t findNextGeneratedProfile(uint8_t from, int8_t movement)
 {
-    uint8_t count = 0;
-    Platform platform;
+    if (GENERATED_PROFILE_COUNT == 0)
+        return 0;
 
-    for (uint8_t i = 0;
-         i < PLATFORM_COUNT;
-         ++i)
+    uint8_t candidate = from;
+    for (uint16_t checked = 0; checked < 255; ++checked)
     {
-        loadPlatform(i, platform);
-
-        if (platform.manufacturerIndex ==
-            manufacturerIndex)
-        {
-            ++count;
-        }
+        candidate = movement > 0
+            ? (candidate == 255 ? 1 : (uint8_t)(candidate + 1))
+            : (candidate <= 1 ? 255 : (uint8_t)(candidate - 1));
+        if (generatedProfileExists(candidate))
+            return candidate;
     }
-
-    return count;
+    return 0;
 }
 
-
-int getPlatformArrayIndex(
-    uint8_t manufacturerIndex,
-    uint8_t filteredPosition)
+void printGeometryRows(bool showSelection)
 {
-    uint8_t found = 0;
-    Platform platform;
-
-    for (uint8_t i = 0;
-         i < PLATFORM_COUNT;
-         ++i)
-    {
-        loadPlatform(i, platform);
-
-        if (platform.manufacturerIndex ==
-            manufacturerIndex)
-        {
-            if (found == filteredPosition)
-                return i;
-
-            ++found;
-        }
-    }
-
-    return -1;
-}
-
-
-bool loadSelectedPlatform(
-    Platform& platform)
-{
-    int index =
-        getPlatformArrayIndex(
-            selectedManufacturer,
-            selectedPlatformPosition);
-
-    if (index < 0)
-        return false;
-
-    loadPlatform(
-        (uint8_t)index,
-        platform);
-
-    return true;
-}
-
-
-// ============================================================
-// GEOMETRY PREVIEW
-// ============================================================
-
-void copyPlatformGeometry(
-    const Platform& platform)
-{
-    currentGeometry.hsh = platform.hsh;
-    currentGeometry.vsl = platform.vsl;
-    currentGeometry.vam = platform.vam;
-    currentGeometry.vsc = platform.vsc;
-    currentGeometry.vsh = platform.vsh;
-}
-
-
-// ============================================================
-// LCD UI
-// ============================================================
-
-void renderManufacturerMenu()
-{
-    Manufacturer manufacturer;
-
-    loadManufacturer(
-        selectedManufacturer,
-        manufacturer);
-
-
-    lcdPrintLineF(
-        0,
-        F("Manufacturer"));
-
-
     char line[21];
-
-
-    snprintf(
-        line,
-        sizeof(line),
-        "> %-17.17s",
-        manufacturer.name);
-
-    lcdPrintLine(
-        1,
-        line);
-
-
-    uint8_t count =
-        countPlatformsForManufacturer(
-            selectedManufacturer);
-
-
-    if (count == 0)
-    {
-        lcdPrintLineF(
-            2,
-            F("No presets yet"));
-
-        lcdPrintLineF(
-            3,
-            F("Turn for another"));
-    }
-    else
-    {
-        snprintf(
-            line,
-            sizeof(line),
-            "%u platform%s",
-            count,
-            count == 1 ? "" : "s");
-
-        lcdPrintLine(
-            2,
-            line);
-
-        lcdPrintLineF(
-            3,
-            F("Click to enter"));
-    }
+    snprintf(line, sizeof(line), "%cHSH%02u %cVSL%02u %cVAM%02u",
+        showSelection && selectedParameter == PARAM_HSH ? '*' : ' ', currentGeometry.hsh,
+        showSelection && selectedParameter == PARAM_VSL ? '*' : ' ', currentGeometry.vsl,
+        showSelection && selectedParameter == PARAM_VAM ? '*' : ' ', currentGeometry.vam);
+    lcdPrintLine(2, line);
+    snprintf(line, sizeof(line), "%cVSC%02u %cVSH%02u",
+        showSelection && selectedParameter == PARAM_VSC ? '*' : ' ', currentGeometry.vsc,
+        showSelection && selectedParameter == PARAM_VSH ? '*' : ' ', currentGeometry.vsh);
+    lcdPrintLine(3, line);
 }
 
-
-void renderPlatformMenu()
+void renderProfileSelector()
 {
-    Manufacturer manufacturer;
-    Platform platform;
-
-    loadManufacturer(
-        selectedManufacturer,
-        manufacturer);
-
-
-    if (!loadSelectedPlatform(platform))
+    // HD44780 rows are 20 characters max.
+    if (selectedProfileId == 0)
     {
-        lcdPrintLine(
-            0,
-            manufacturer.name);
-
-        lcdPrintLineF(
-            1,
-            F("No platform presets"));
-
-        lcdPrintLineF(
-            2,
-            F(""));
-
-        lcdPrintLineF(
-            3,
-            F("Hold = BACK"));
-
+        lcdPrintLineF(0, F("No profiles found"));
+        lcdPrintLineF(1, F("Generate database"));
+        lcdPrintLineF(2, F("from desktop app"));
+        lcdPrintLineF(3, F(""));
         return;
     }
 
-
     char line[21];
-
-
-    // --------------------------------------------------------
-    // Row 1: manufacturer
-    // --------------------------------------------------------
-
-    lcdPrintLine(
-        0,
-        manufacturer.name);
-
-
-    // --------------------------------------------------------
-    // Row 2: year + platform
-    // --------------------------------------------------------
-
-    snprintf(
-        line,
-        sizeof(line),
-        "> %u %.13s",
-        platform.year,
-        platform.name);
-
-    lcdPrintLine(
-        1,
-        line);
-
-
-    // --------------------------------------------------------
-    // Row 3:
-    //
-    // *HSH63 *VSL63 *VAM63
-    //
-    // '*' only appears against the selected parameter.
-    // --------------------------------------------------------
-
-    snprintf(
-        line,
-        sizeof(line),
-        "%cHSH%02u %cVSL%02u %cVAM%02u",
-        selectedParameter == PARAM_HSH ? '*' : ' ',
-        currentGeometry.hsh,
-
-        selectedParameter == PARAM_VSL ? '*' : ' ',
-        currentGeometry.vsl,
-
-        selectedParameter == PARAM_VAM ? '*' : ' ',
-        currentGeometry.vam);
-
-    lcdPrintLine(
-        2,
-        line);
-
-
-    // --------------------------------------------------------
-    // Row 4:
-    //
-    // *VSC63 *VSH63
-    // --------------------------------------------------------
-
-    snprintf(
-        line,
-        sizeof(line),
-        "%cVSC%02u %cVSH%02u",
-        selectedParameter == PARAM_VSC ? '*' : ' ',
-        currentGeometry.vsc,
-
-        selectedParameter == PARAM_VSH ? '*' : ' ',
-        currentGeometry.vsh);
-
-    lcdPrintLine(
-        3,
-        line);
+    snprintf(line, sizeof(line), "Profile %03u", selectedProfileId);
+    lcdPrintLine(0, line);
+    lcdPrintLineF(1, F("Turn=SELECT Click=GO"));
+    printGeometryRows(false);
 }
 
+void renderGeometryEditor()
+{
+    char line[21];
+    snprintf(line, sizeof(line), "Profile %03u EDIT", selectedProfileId);
+    lcdPrintLine(0, line);
+    lcdPrintLineF(1, F("Click=WRITE Hold=UP"));
+    printGeometryRows(true);
+}
 
 void renderUI()
 {
-    if (menuLevel ==
-        MENU_MANUFACTURER)
-    {
-        renderManufacturerMenu();
-    }
+    if (menuLevel == MENU_PROFILE_SELECT)
+        renderProfileSelector();
     else
-    {
-        renderPlatformMenu();
-    }
+        renderGeometryEditor();
 }
-
 
 // ============================================================
 // GEOMETRY ENCODING
@@ -1876,289 +1596,45 @@ ButtonEvent updateRotaryButton(
 
 
 // ============================================================
-// MANUFACTURER NAVIGATION
+// PROFILE NAVIGATION / BUTTON ACTIONS
 // ============================================================
 
-void moveManufacturer(
-    int8_t movement)
+void moveProfile(int8_t movement)
 {
-    int next =
-        (int)selectedManufacturer +
-        movement;
-
-
-    if (next < 0)
-        next =
-            MANUFACTURER_COUNT - 1;
-
-
-    if (next >=
-        MANUFACTURER_COUNT)
+    uint8_t next = findNextGeneratedProfile(selectedProfileId, movement);
+    if (next != 0)
     {
-        next = 0;
-    }
-
-
-    selectedManufacturer =
-        (uint8_t)next;
-
-
-#if DEBUG_LOGGING
-
-    Manufacturer manufacturer;
-
-    loadManufacturer(
-        selectedManufacturer,
-        manufacturer);
-
-    Serial.print(
-        F("Manufacturer: "));
-
-    Serial.println(
-        manufacturer.name);
-
-#endif
-
-
-    renderUI();
-}
-
-
-// ============================================================
-// ENTER MANUFACTURER
-// ============================================================
-
-void enterManufacturer()
-{
-    uint8_t count =
-        countPlatformsForManufacturer(
-            selectedManufacturer);
-
-
-    if (count == 0)
-    {
-        Manufacturer manufacturer;
-
-        loadManufacturer(
-            selectedManufacturer,
-            manufacturer);
-
-
-        lcdPrintLine(
-            0,
-            manufacturer.name);
-
-        lcdPrintLineF(
-            1,
-            F("No presets yet"));
-
-        lcdPrintLineF(
-            2,
-            F(""));
-
-        lcdPrintLineF(
-            3,
-            F("Turn for another"));
-
-
-        delay(600);
-
-        renderUI();
-
-        return;
-    }
-
-
-    selectedPlatformPosition =
-        lastPlatformPosition[
-            selectedManufacturer];
-
-
-    if (selectedPlatformPosition >= count)
-        selectedPlatformPosition = 0;
-
-
-    Platform platform;
-
-
-    if (loadSelectedPlatform(
-            platform))
-    {
-        copyPlatformGeometry(
-            platform);
-    }
-
-
-    menuLevel =
-        MENU_PLATFORM;
-
-
-#if DEBUG_LOGGING
-
-    Manufacturer manufacturer;
-
-    loadManufacturer(
-        selectedManufacturer,
-        manufacturer);
-
-
-    Serial.print(
-        F("Entered manufacturer: "));
-
-    Serial.println(
-        manufacturer.name);
-
-#endif
-
-
-    renderUI();
-}
-
-
-// ============================================================
-// PLATFORM NAVIGATION
-// ============================================================
-
-void movePlatform(
-    int8_t movement)
-{
-    uint8_t count =
-        countPlatformsForManufacturer(
-            selectedManufacturer);
-
-
-    if (count == 0)
-        return;
-
-
-    int next =
-        (int)selectedPlatformPosition +
-        movement;
-
-
-    if (next < 0)
-        next =
-            count - 1;
-
-
-    if (next >= count)
-        next = 0;
-
-
-    selectedPlatformPosition =
-        (uint8_t)next;
-
-
-    lastPlatformPosition[
-        selectedManufacturer] =
-            selectedPlatformPosition;
-
-
-    Platform platform;
-
-
-    if (loadSelectedPlatform(
-            platform))
-    {
-        /*
-            Browsing loads the preset into the editable/displayed
-            working geometry, but does NOT write it.
-        */
-
-        copyPlatformGeometry(
-            platform);
-
-
-#if DEBUG_LOGGING
-
-        Serial.print(
-            F("Platform preview: "));
-
-        Serial.print(
-            platform.year);
-
-        Serial.print(' ');
-
-        Serial.println(
-            platform.name);
-
-
-        debugPrintGeometry(
-            currentGeometry);
-
-#endif
-    }
-
-
-    renderUI();
-}
-
-
-// ============================================================
-// BACK
-// ============================================================
-
-void backOneMenuLevel()
-{
-    if (menuLevel ==
-        MENU_PLATFORM)
-    {
-        menuLevel =
-            MENU_MANUFACTURER;
-
-
-#if DEBUG_LOGGING
-
-        Serial.println(
-            F("Back to manufacturer list."));
-
-#endif
-
-
+        selectedProfileId = next;
+        loadGeneratedProfile(selectedProfileId, currentGeometry);
         renderUI();
     }
 }
-
-
-// ============================================================
-// BUTTON ACTIONS
-// ============================================================
 
 void handleClick()
 {
-    if (menuLevel ==
-        MENU_MANUFACTURER)
+    if (menuLevel == MENU_PROFILE_SELECT)
     {
-        /*
-            At root level, any encoder click enters the currently
-            selected manufacturer.
-        */
-
-        enterManufacturer();
+        if (selectedProfileId != 0 && loadGeneratedProfile(selectedProfileId, currentGeometry))
+        {
+            menuLevel = MENU_GEOMETRY;
+            renderUI();
+        }
     }
     else
     {
-        /*
-            Once a platform and geometry values are visible,
-            clicking ANY encoder writes those displayed values.
-        */
-
         writeCurrentGeometry();
     }
 }
 
-
 void handleLongPress()
 {
-    /*
-        Any encoder hold = one menu level back.
-
-        At root level this simply does nothing.
-    */
-
-    backOneMenuLevel();
+    if (menuLevel == MENU_GEOMETRY)
+    {
+        menuLevel = MENU_PROFILE_SELECT;
+        loadGeneratedProfile(selectedProfileId, currentGeometry);
+        renderUI();
+    }
 }
-
 
 // ============================================================
 // ENCODER HANDLING
@@ -2168,7 +1644,7 @@ void updateEncoders()
 {
     // --------------------------------------------------------
     // Encoder 1
-    // Manufacturer/platform browsing
+    // Generated profile browsing
     // --------------------------------------------------------
 
     int8_t movement1 =
@@ -2178,17 +1654,8 @@ void updateEncoders()
 
     if (movement1 != 0)
     {
-        if (menuLevel ==
-            MENU_MANUFACTURER)
-        {
-            moveManufacturer(
-                movement1);
-        }
-        else
-        {
-            movePlatform(
-                movement1);
-        }
+        if (menuLevel == MENU_PROFILE_SELECT)
+            moveProfile(movement1);
     }
 
 
@@ -2203,7 +1670,7 @@ void updateEncoders()
 
 
     if (movement2 != 0 &&
-        menuLevel == MENU_PLATFORM)
+        menuLevel == MENU_GEOMETRY)
     {
         int next =
             (int)selectedParameter +
@@ -2273,7 +1740,7 @@ void updateEncoders()
 
 
     if (movement3 != 0 &&
-        menuLevel == MENU_PLATFORM)
+        menuLevel == MENU_GEOMETRY)
     {
         adjustSelectedParameter(
             movement3);
@@ -2285,8 +1752,8 @@ void updateEncoders()
     //
     // All three buttons have identical meaning:
     //
-    // click = enter manufacturer OR write geometry
-    // hold  = back one menu level
+    // click = enter editor OR write geometry
+    // hold  = return to profile selector
     // --------------------------------------------------------
 
     ButtonEvent button1 =
@@ -2397,12 +1864,9 @@ void setup()
     Wire.begin();
 
 
-    for (uint8_t i = 0;
-         i < MANUFACTURER_COUNT;
-         ++i)
-    {
-        lastPlatformPosition[i] = 0;
-    }
+    selectedProfileId = findNextGeneratedProfile(0, 1);
+    if (selectedProfileId != 0)
+        loadGeneratedProfile(selectedProfileId, currentGeometry);
 
 
     delay(300);
@@ -2417,7 +1881,7 @@ void setup()
         F("Controls:"));
 
     Serial.println(
-        F(" E1 turn  = manufacturer/platform"));
+        F(" E1 turn  = select profile"));
 
     Serial.println(
         F(" E2 turn  = geometry parameter"));
@@ -2426,10 +1890,10 @@ void setup()
         F(" E3 turn  = geometry value"));
 
     Serial.println(
-        F(" Any click = enter/write"));
+        F(" Any click = edit/write"));
 
     Serial.println(
-        F(" Any hold  = back"));
+        F(" Any hold  = selector"));
 
     Serial.println();
 

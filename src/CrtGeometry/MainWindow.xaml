@@ -121,5 +121,28 @@
         <Button x:Name="ApplyCsvButton" Width="150" Height="32" Margin="0,12,0,0" HorizontalAlignment="Left" IsEnabled="False" Click="ApplyCsv_Click">Apply import</Button>
        </StackPanel>
       </TabItem>
+      <TabItem Header="Firmware / Arduino">
+       <StackPanel Margin="16">
+        <TextBlock FontSize="24" FontWeight="SemiBold" Text="Arduino Profile Database" />
+        <TextBlock Margin="0,8,0,16" TextWrapping="Wrap" Text="Generate the AVR PROGMEM geometry table directly from the authoritative SQLite profiles. This does not compile or upload firmware." />
+        <TextBlock FontWeight="Bold" Text="Firmware directory"/>
+        <DockPanel Margin="0,5,0,12">
+         <Button DockPanel.Dock="Right" Width="100" Margin="8,0,0,0" Click="BrowseFirmware_Click">Browse...</Button>
+         <TextBox x:Name="FirmwareDirectory" IsReadOnly="True" VerticalContentAlignment="Center"/>
+        </DockPanel>
+        <TextBlock><Run FontWeight="Bold" Text="Output: "/><Run x:Name="FirmwareOutputPath"/></TextBlock>
+        <Grid Margin="0,16,0,12" MaxWidth="500" HorizontalAlignment="Left">
+         <Grid.ColumnDefinitions><ColumnDefinition Width="260"/><ColumnDefinition Width="100"/></Grid.ColumnDefinitions>
+         <Grid.RowDefinitions><RowDefinition/><RowDefinition/><RowDefinition/><RowDefinition/><RowDefinition/></Grid.RowDefinitions>
+         <TextBlock Text="Profile count"/><TextBlock Grid.Column="1" x:Name="FirmwareProfileCount"/>
+         <TextBlock Grid.Row="1" Text="Highest profile ID"/><TextBlock Grid.Row="1" Grid.Column="1" x:Name="FirmwareHighestId"/>
+         <TextBlock Grid.Row="2" Text="Profile table estimate"/><TextBlock Grid.Row="2" Grid.Column="1" x:Name="FirmwareTableBytes"/>
+         <TextBlock Grid.Row="3" Text="Validity bitmap estimate"/><TextBlock Grid.Row="3" Grid.Column="1" x:Name="FirmwareValidityBytes"/>
+         <TextBlock Grid.Row="4" FontWeight="Bold" Text="Total profile-data estimate"/><TextBlock Grid.Row="4" Grid.Column="1" FontWeight="Bold" x:Name="FirmwareTotalBytes"/>
+        </Grid>
+        <WrapPanel><Button Width="170" Height="32" Click="GenerateFirmware_Click">Generate Database</Button><Button Width="120" Height="32" Margin="8,0,0,0" Click="RefreshFirmware_Click">Refresh stats</Button></WrapPanel>
+        <TextBlock x:Name="FirmwareStatus" Margin="0,14,0,0" TextWrapping="Wrap" FontWeight="SemiBold"/>
+       </StackPanel>
+      </TabItem>
     </TabControl>
 </Window>

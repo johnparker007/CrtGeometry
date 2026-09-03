@@ -13,6 +13,9 @@ public partial class MainWindow : Window
     private readonly GamesViewModel _gamesViewModel;
     private readonly CalibrationViewModel _calibrationViewModel;
     private readonly CalibrationRepository _calibrationRepository;
+    private readonly CsvInterchangeService _csvService;
+    private CsvImportPreview? _csvPreview;
+    private CsvImportMode _csvPreviewMode;
 
     public MainWindow()
     {
@@ -31,9 +34,38 @@ public partial class MainWindow : Window
         _gamesViewModel = new GamesViewModel(new GameCatalogueRepository(_connectionString));
         GamesPanel.DataContext = _gamesViewModel;
         _calibrationRepository = new CalibrationRepository(_connectionString);
+        _csvService = new CsvInterchangeService(_connectionString);
         _calibrationViewModel = new CalibrationViewModel(new GameCatalogueRepository(_connectionString), _calibrationRepository);
         CalibrationPanel.DataContext = _calibrationViewModel;
         Loaded += async (_, _) => await _gamesViewModel.RefreshAsync();
+    }
+
+    private void ExportCsv_Click(object sender, RoutedEventArgs e)
+    {
+        var dialog = new SaveFileDialog { Filter="CSV backup ZIP (*.zip)|*.zip",DefaultExt=".zip",FileName="crtgeometry-csv.zip",Title="Export CSV set" };
+        if(dialog.ShowDialog(this)!=true)return;
+        try { _csvService.Export(dialog.FileName); CsvStatus.Text="Export complete."; CsvSummary.Text=$"Created {dialog.FileName}"; }
+        catch(Exception ex){MessageBox.Show(this,ex.Message,"CSV export failed",MessageBoxButton.OK,MessageBoxImage.Error);}
+    }
+
+    private async void ValidateCsv_Click(object sender, RoutedEventArgs e)
+    {
+        var dialog=new OpenFileDialog{Filter="CSV backup ZIP (*.zip)|*.zip|All files (*.*)|*.*",Title="Select CSV import set"};
+        if(dialog.ShowDialog(this)!=true)return;
+        _csvPreviewMode=CsvMode.SelectedIndex==1?CsvImportMode.Replace:CsvImportMode.Merge;
+        _csvPreview=await Task.Run(()=>_csvService.Validate(dialog.FileName,_csvPreviewMode));
+        ApplyCsvButton.IsEnabled=_csvPreview.IsValid;
+        CsvStatus.Text=_csvPreview.IsValid?"Validation passed. Review the summary, then apply.":"Validation failed; nothing has been changed.";
+        var errors=_csvPreview.Errors.Count==0?"None":string.Join(Environment.NewLine,_csvPreview.Errors.Select(x=>"- "+x));
+        CsvSummary.Text=$"Mode: {_csvPreviewMode}{Environment.NewLine}Profiles: {_csvPreview.ProfilesFound}{Environment.NewLine}Calibrations: {_csvPreview.CalibrationsFound}{Environment.NewLine}Active mappings: {_csvPreview.MappingsFound}{Environment.NewLine}Assignments: {_csvPreview.AssignmentsFound}{Environment.NewLine}Inserts: {_csvPreview.Inserts}{Environment.NewLine}Updates: {_csvPreview.Updates}{Environment.NewLine}Unresolved ROM names: {_csvPreview.UnresolvedRomNames.Count}{Environment.NewLine}{Environment.NewLine}Validation errors:{Environment.NewLine}{errors}";
+    }
+
+    private async void ApplyCsv_Click(object sender, RoutedEventArgs e)
+    {
+        if(_csvPreview is null||!_csvPreview.IsValid)return;
+        if(MessageBox.Show(this,$"Apply this {_csvPreviewMode} import in one transaction?", "Confirm CSV import",MessageBoxButton.YesNo,MessageBoxImage.Warning)!=MessageBoxResult.Yes)return;
+        try { await Task.Run(()=>_csvService.Apply(_csvPreview,_csvPreviewMode)); CsvStatus.Text="Import applied successfully.";ApplyCsvButton.IsEnabled=false;ReloadProfiles();await _gamesViewModel.RefreshAsync(); }
+        catch(Exception ex){CsvStatus.Text="Import failed; all changes were rolled back.";MessageBox.Show(this,ex.Message,"CSV import failed",MessageBoxButton.OK,MessageBoxImage.Error);}
     }
 
     private async void PreviewCalibration_Click(object sender, RoutedEventArgs e)

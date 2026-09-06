@@ -22,12 +22,88 @@ public sealed class ProfileMatchingTests : IDisposable
     {
         var service=new VideoSignatureService();
         Assert.Equal(Signature(320,240,0,60.6060611),Signature(320,240,360,60.6060614));
+        Assert.Equal(Signature(320,240,0,60.606061),Signature(320,240,180,60.606061));
+        Assert.Equal(Signature(320,240,90,60.606061),Signature(320,240,270,60.606061));
         Assert.NotEqual(Signature(321,240,0,60.606061),Signature(320,240,0,60.606061));
         Assert.NotEqual(Signature(320,241,0,60.606061),Signature(320,240,0,60.606061));
         Assert.NotEqual(Signature(320,240,90,60.606061),Signature(320,240,0,60.606061));
         Assert.NotEqual(Signature(320,240,0,60.606063),Signature(320,240,0,60.606061));
         Assert.Null(service.SelectPrimary([Display(320,null,0,60)]).Signature);
         Assert.Null(service.SelectPrimary([Display(320,240,0,null)]).Signature);
+    }
+
+    [Fact]
+    public void OppositeRotationsPropagateTogetherWithoutSwappingDimensions()
+    {
+        const string games="""
+          <game name='r0'><description>R0</description><display type='raster' width='320' height='240' rotate='0' refresh='60'/><input coins='1'/></game>
+          <game name='r180'><description>R180</description><display type='raster' width='320' height='240' rotate='180' refresh='60'/><input coins='1'/></game>
+          <game name='r90'><description>R90</description><display type='raster' width='320' height='240' rotate='90' refresh='60'/><input coins='1'/></game>
+          <game name='r270'><description>R270</description><display type='raster' width='320' height='240' rotate='270' refresh='60'/><input coins='1'/></game>
+          """;
+        new MameImportService(_cs).Import(Xml(games),"orientations.xml");
+        var repository=new CalibrationRepository(_cs);
+        var horizontal=repository.PreviewAndApply("r0",new(1,2,3,4,5));
+        Assert.Equal(["r0","r180"],horizontal.Preview.MatchingGames.Select(x=>x.RomName).Order());
+        Assert.Equal(horizontal.ProfileId,FindGame(new(_cs),"r180").ProfileId);
+        Assert.Null(FindGame(new(_cs),"r90").ProfileId);
+
+        var vertical=repository.PreviewAndApply("r90",new(6,7,8,9,10));
+        Assert.Equal(["r270","r90"],vertical.Preview.MatchingGames.Select(x=>x.RomName).Order());
+        Assert.Equal(vertical.ProfileId,FindGame(new(_cs),"r270").ProfileId);
+        Assert.NotEqual(horizontal.ProfileId,vertical.ProfileId);
+
+        var catalogue=new GameCatalogueRepository(_cs);
+        Assert.Equal(180,FindGame(catalogue,"r180").Displays.Single().Rotate);
+        Assert.Equal(270,FindGame(catalogue,"r270").Displays.Single().Rotate);
+    }
+
+    [Fact]
+    public void VersionFiveMigrationNormalizesMappingsAndReevaluatesAutomaticAssignments()
+    {
+        using(var c=SqliteConnectionFactory.Open(_cs)) using(var command=c.CreateCommand())
+        {
+            command.CommandText="""
+                INSERT INTO GeometryProfiles VALUES(7,1,2,3,4,5,'legacy');
+                INSERT INTO CalibrationRecords(ProfileId,SourceRomName,Width,Height,Rotation,RefreshMicroHz,CreatedAtUtc)
+                  VALUES(7,'source',320,240,180,60606061,'2025-01-01T00:00:00Z');
+                INSERT INTO VideoProfileMappings VALUES(320,240,180,60606061,7,last_insert_rowid());
+                UPDATE MameDisplays SET Rotate=0 WHERE RomName='match';
+                PRAGMA user_version=4;
+                """;
+            command.ExecuteNonQuery();
+        }
+
+        new DatabaseInitializer(_cs).Initialize();
+
+        Assert.Equal(7,FindGame(new(_cs),"match").ProfileId);
+        using var check=SqliteConnectionFactory.Open(_cs); using var query=check.CreateCommand();
+        query.CommandText="SELECT Rotation FROM VideoProfileMappings;";
+        Assert.Equal(0L,query.ExecuteScalar());
+    }
+
+    [Fact]
+    public void MigrationReportsCollapsedMappingsWithDifferentProfiles()
+    {
+        using(var c=SqliteConnectionFactory.Open(_cs)) using(var command=c.CreateCommand())
+        {
+            command.CommandText="""
+                INSERT INTO GeometryProfiles VALUES(7,1,2,3,4,5,'first');
+                INSERT INTO GeometryProfiles VALUES(8,6,7,8,9,10,'second');
+                INSERT INTO CalibrationRecords(ProfileId,SourceRomName,Width,Height,Rotation,RefreshMicroHz,CreatedAtUtc)
+                  VALUES(7,'source',320,240,0,60606061,'2025-01-01T00:00:00Z');
+                INSERT INTO VideoProfileMappings VALUES(320,240,0,60606061,7,last_insert_rowid());
+                INSERT INTO CalibrationRecords(ProfileId,SourceRomName,Width,Height,Rotation,RefreshMicroHz,CreatedAtUtc)
+                  VALUES(8,'source',320,240,180,60606061,'2025-01-02T00:00:00Z');
+                INSERT INTO VideoProfileMappings VALUES(320,240,180,60606061,8,last_insert_rowid());
+                PRAGMA user_version=4;
+                """;
+            command.ExecuteNonQuery();
+        }
+
+        var error=Assert.Throws<InvalidOperationException>(()=>new DatabaseInitializer(_cs).Initialize());
+        Assert.Contains("conflict",error.Message,StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("profiles 7,8",error.Message);
     }
 
     [Fact]

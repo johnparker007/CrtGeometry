@@ -4,7 +4,7 @@ namespace CrtGeometry.Data;
 
 public sealed class DatabaseInitializer(string connectionString)
 {
-    public const int CurrentVersion = 4;
+    public const int CurrentVersion = 5;
     public void Initialize()
     {
         using var connection = SqliteConnectionFactory.Open(connectionString);
@@ -37,10 +37,70 @@ public sealed class DatabaseInitializer(string connectionString)
             version = 4;
         }
 
+        if (version < 5)
+        {
+            ApplyVersion5(connection);
+            version = 5;
+        }
+
         if (version > CurrentVersion)
         {
             throw new InvalidOperationException($"Database version {version} is newer than this application supports.");
         }
+    }
+
+    private static void ApplyVersion5(SqliteConnection connection)
+    {
+        // Refuse to guess when two formerly distinct keys have different owners.
+        using (var conflict = connection.CreateCommand())
+        {
+            conflict.CommandText = """
+                SELECT Width,Height,((Rotation%180)+180)%180,RefreshMicroHz,
+                       group_concat(DISTINCT ProfileId)
+                FROM VideoProfileMappings
+                GROUP BY Width,Height,((Rotation%180)+180)%180,RefreshMicroHz
+                HAVING COUNT(DISTINCT ProfileId)>1
+                ORDER BY Width,Height,RefreshMicroHz LIMIT 1;
+                """;
+            using var reader = conflict.ExecuteReader();
+            if (reader.Read())
+                throw new InvalidOperationException($"Canonical video-signature conflict for {reader.GetInt32(0)}x{reader.GetInt32(1)}, orientation {reader.GetInt32(2)}, refresh {reader.GetInt64(3)} microHz: profiles {reader.GetString(4)}. Resolve the conflicting calibration mappings manually before upgrading.");
+        }
+
+        using var transaction = connection.BeginTransaction();
+        using var command = connection.CreateCommand(); command.Transaction = transaction;
+        command.CommandText = """
+            CREATE TEMP TABLE NormalizedMappings AS
+              SELECT Width,Height,((Rotation%180)+180)%180 AS Rotation,RefreshMicroHz,
+                     ProfileId,MAX(CalibrationId) AS CalibrationId
+              FROM VideoProfileMappings
+              GROUP BY Width,Height,((Rotation%180)+180)%180,RefreshMicroHz,ProfileId;
+            DELETE FROM VideoProfileMappings;
+            INSERT INTO VideoProfileMappings SELECT * FROM NormalizedMappings;
+            DROP TABLE NormalizedMappings;
+            UPDATE CalibrationRecords SET Rotation=((Rotation%180)+180)%180;
+            UPDATE GameProfileAssignments SET Rotation=((Rotation%180)+180)%180 WHERE AssignmentType=1;
+
+            INSERT INTO GameProfileAssignments(RomName,ProfileId,AssignmentType,Width,Height,Rotation,RefreshMicroHz,UpdatedAtUtc)
+            SELECT m.RomName,v.ProfileId,1,d.Width,d.Height,((d.Rotate%180)+180)%180,
+                   CAST(round(d.Refresh*1000000.0) AS INTEGER),strftime('%Y-%m-%dT%H:%M:%fZ','now')
+            FROM MameMachines m
+            JOIN MameDisplays d ON d.RomName=m.RomName
+            JOIN VideoProfileMappings v ON v.Width=d.Width AND v.Height=d.Height
+              AND v.Rotation=((d.Rotate%180)+180)%180
+              AND v.RefreshMicroHz=CAST(round(d.Refresh*1000000.0) AS INTEGER)
+            WHERE m.IsIncluded=1 AND m.IsPresent=1
+              AND (m.CloneOf IS NULL OR trim(m.CloneOf)='')
+              AND (d.Type IS NULL OR trim(d.Type)='' OR lower(d.Type)='raster')
+              AND (SELECT COUNT(*) FROM MameDisplays rd WHERE rd.RomName=m.RomName
+                   AND (rd.Type IS NULL OR trim(rd.Type)='' OR lower(rd.Type)='raster'))=1
+            ON CONFLICT(RomName) DO UPDATE SET ProfileId=excluded.ProfileId,AssignmentType=1,
+              Width=excluded.Width,Height=excluded.Height,Rotation=excluded.Rotation,
+              RefreshMicroHz=excluded.RefreshMicroHz,UpdatedAtUtc=excluded.UpdatedAtUtc
+              WHERE GameProfileAssignments.AssignmentType=1;
+            PRAGMA user_version = 5;
+            """;
+        command.ExecuteNonQuery(); transaction.Commit();
     }
 
     private static void ApplyVersion4(SqliteConnection connection)

@@ -77,6 +77,22 @@ public sealed class CsvInterchangeService(string connectionString)
             Read(archive,"mappings.csv",data.Mappings,data); Read(archive,"assignments.csv",data.Assignments,data);
             for (var i = 0; i < data.Profiles.Count; i++)
                 if (data.Profiles[i].Notes == string.Empty) data.Profiles[i] = data.Profiles[i] with { Notes = null };
+            // Format v1 archives used literal MAME rotations. Interpret them using
+            // the current canonical orientation while retaining catalogue rotation separately.
+            for (var i=0;i<data.Calibrations.Count;i++) data.Calibrations[i]=data.Calibrations[i] with { Rotation=Orientation(data.Calibrations[i].Rotation) };
+            for (var i=0;i<data.Mappings.Count;i++) data.Mappings[i]=data.Mappings[i] with { Rotation=Orientation(data.Mappings[i].Rotation) };
+            for (var i=0;i<data.Assignments.Count;i++) if(data.Assignments[i].Rotation is int rotation)
+                data.Assignments[i]=data.Assignments[i] with { Rotation=Orientation(rotation) };
+            foreach(var group in data.Mappings.GroupBy(x=>(x.Width,x.Height,x.Rotation,x.RefreshMicroHz)).ToList())
+            {
+                if(group.Select(x=>x.ProfileId).Distinct().Count()>1)
+                    data.Errors.Add($"Canonical mapping conflict for {group.Key.Width}x{group.Key.Height}, orientation {group.Key.Rotation}, refresh {group.Key.RefreshMicroHz} microHz: profiles {string.Join(",",group.Select(x=>x.ProfileId).Distinct().Order())}.");
+                else if(group.Count()>1)
+                {
+                    var keep=group.OrderByDescending(x=>x.CalibrationId).First();
+                    data.Mappings.RemoveAll(x=>group.Contains(x) && x!=keep);
+                }
+            }
         }
         catch (Exception ex) when (ex is InvalidDataException or IOException)
         { data.Errors.Add($"Archive parse error: {ex.Message}"); }
@@ -152,5 +168,6 @@ public sealed class CsvInterchangeService(string connectionString)
     private static void CheckProfile(int id,string context,HashSet<int> ids,CsvImportData d){if(!ids.Contains(id))d.Errors.Add($"{context} references missing profile {id}.");}
     private static void CheckRom(string rom,HashSet<string> roms,CsvImportData d){if(string.IsNullOrWhiteSpace(rom)||!roms.Contains(rom)){d.UnresolvedRomNames.Add(rom);d.Errors.Add($"Unknown MAME ROM: '{rom}'.");}}
     private static void CheckSignature(int w,int h,int r,long f,string context,CsvImportData d){if(w<=0||h<=0||r is <0 or >359||f<=0)d.Errors.Add($"{context}: signature must have positive dimensions/refresh and rotation 0..359.");}
+    private static int Orientation(int rotation)=>((rotation%180)+180)%180;
     private static void Execute(SqliteConnection c,SqliteTransaction tx,string sql,params (string Name,object? Value)[] values){using var cmd=c.CreateCommand();cmd.Transaction=tx;cmd.CommandText=sql;foreach(var x in values)cmd.Parameters.AddWithValue(x.Name,x.Value??DBNull.Value);cmd.ExecuteNonQuery();}
 }
